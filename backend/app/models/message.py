@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
+from sqlalchemy import JSON, Column
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import (
     Mapped,
     mapped_column,
@@ -38,6 +39,15 @@ class Message(Base):
         String,
         nullable=False,
     )
+    sources = Column(
+        JSON,
+        nullable=True,
+        default=list,
+    )
+
+    confidence = Column(Integer, nullable=True, default=0)
+
+    follow_up_questions = Column(JSON, nullable=True, default=list)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

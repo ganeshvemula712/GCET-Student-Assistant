@@ -2,6 +2,8 @@ from hashlib import sha256
 from io import BytesIO
 
 import pymupdf
+import docx
+from PIL import Image
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
@@ -9,22 +11,27 @@ from sqlalchemy.orm import Session
 from backend.app.models.document import Document
 from backend.app.services.embeddings import generate_embeddings
 from backend.app.services.text_processing import chunk_text
+from backend.app.services.gemini import client as gemini_client
 from backend.app.services.vector_store import (
     delete_document_chunks,
+    mark_document_chunks_inactive,
     store_chunks,
 )
+from google.genai import types
 
 
 async def process_document(
     file: UploadFile,
     db: Session,
+    supersedes_id: str | None = None,
 ) -> dict:
+    filename_lower = file.filename.lower()
+    allowed_extensions = (".pdf", ".docx", ".doc", ".jpg", ".jpeg", ".png")
 
-    # Validate file type
-    if file.content_type != "application/pdf":
+    if not any(filename_lower.endswith(ext) for ext in allowed_extensions):
         raise HTTPException(
             status_code=400,
-            detail="Only PDF files are allowed",
+            detail="Unsupported file format. Supported formats: PDF, DOCX, DOC, JPG, JPEG, PNG.",
         )
 
     # Read uploaded file
@@ -33,7 +40,7 @@ async def process_document(
     if not content:
         raise HTTPException(
             status_code=400,
-            detail="Uploaded PDF is empty",
+            detail="Uploaded file is empty",
         )
 
     # Generate unique document ID
@@ -52,75 +59,149 @@ async def process_document(
             detail="This document has already been uploaded",
         )
 
-    # Open PDF
-    try:
-        pdf_document = pymupdf.open(
-            stream=BytesIO(content),
-            filetype="pdf",
-        )
+    page_count = 1
+    extracted_pages = []
 
-    except Exception:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid or corrupted PDF file",
+    # 1. Process PDF
+    if filename_lower.endswith(".pdf"):
+        try:
+            pdf_document = pymupdf.open(
+                stream=BytesIO(content),
+                filetype="pdf",
+            )
+            page_count = len(pdf_document)
+            for page_index in range(page_count):
+                page = pdf_document[page_index]
+                text = page.get_text()
+                if text.strip():
+                    extracted_pages.append((page_index + 1, text))
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail="Failed to parse PDF document",
+            )
+
+    # 2. Process DOCX / DOC
+    elif filename_lower.endswith((".docx", ".doc")):
+        try:
+            doc_obj = docx.Document(BytesIO(content))
+            lines = []
+            for p in doc_obj.paragraphs:
+                if p.text.strip():
+                    lines.append(p.text)
+            for table in doc_obj.tables:
+                table_lines = []
+                for row in table.rows:
+                    cells = [cell.text.strip() for cell in row.cells]
+                    table_lines.append(" | ".join(cells))
+                if table_lines:
+                    lines.append("\n" + "\n".join(table_lines) + "\n")
+            full_text = "\n\n".join(lines)
+            if full_text.strip():
+                extracted_pages.append((1, full_text))
+            page_count = 1
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail="Failed to parse Word (.docx/.doc) document",
+            )
+
+    # 3. Process Images (JPG, JPEG, PNG) via Gemini Multimodal OCR Vision
+    elif filename_lower.endswith((".jpg", ".jpeg", ".png")):
+        try:
+            mime_type = "image/jpeg" if filename_lower.endswith((".jpg", ".jpeg")) else "image/png"
+            image_part = types.Part.from_bytes(data=content, mime_type=mime_type)
+
+            ocr_prompt = (
+                "You are an expert OCR and document analysis engine for GCET College. "
+                "Extract all text, notices, examination guidelines, and timetable schedules from this document image. "
+                "For timetables, format them as clean, structured Markdown tables with Day, Time, Subject, Room, and Faculty columns. "
+                "Preserve exact course names, exam dates, and timing."
+            )
+
+            response = gemini_client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[image_part, ocr_prompt],
+            )
+            extracted_text = response.text or ""
+            if extracted_text.strip():
+                extracted_pages.append((1, extracted_text))
+            page_count = 1
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to process image OCR via Gemini Vision: {str(e)}",
+            )
+
+    # Handle Versioning
+    new_version = 1
+    if supersedes_id:
+        old_doc = (
+            db.query(Document)
+            .filter(Document.document_id == supersedes_id)
+            .first()
         )
+        if old_doc:
+            new_version = (old_doc.version or 1) + 1
+            old_doc.is_active = False
+            mark_document_chunks_inactive(old_doc.document_id)
 
     all_chunks = []
-    total_character_count = 0
+    for p_num, p_text in extracted_pages:
+        chunks = chunk_text(p_text)
+        for chunk_index, chunk in enumerate(chunks):
+            all_chunks.append(
+                {
+                    "text": chunk,
+                    "metadata": {
+                        "document_id": document_id,
+                        "filename": file.filename,
+                        "page": p_num,
+                        "chunk_index": chunk_index,
+                        "version": new_version,
+                        "is_active": True,
+                    },
+                }
+            )
 
-    # Process PDF page-by-page
-    for page_index, page in enumerate(pdf_document):
-
-        page_text = page.get_text()
-
-        if not page_text.strip():
-            continue
-
-        total_character_count += len(page_text)
-
-        page_number = page_index + 1
-
-        page_chunks = chunk_text(
-            text=page_text,
-            filename=file.filename,
-            page_number=page_number,
-            document_id=document_id,
-        )
-
-        all_chunks.extend(page_chunks)
-
-    page_count = len(pdf_document)
-
-    pdf_document.close()
-
-    # Ensure document contains text
     if not all_chunks:
         raise HTTPException(
             status_code=400,
-            detail="No extractable text found in the PDF",
+            detail="No readable text or content found in uploaded document",
         )
 
-    # Generate embeddings
-    texts = [
-        chunk["text"]
-        for chunk in all_chunks
-    ]
+    # Generate Embeddings
+    try:
+        texts = [chunk["text"] for chunk in all_chunks]
+        embeddings = generate_embeddings(texts)
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Embedding generation failed",
+        )
 
-    embeddings = generate_embeddings(texts)
+    # Store Chunks in ChromaDB
+    try:
+        store_chunks(
+            chunks=all_chunks,
+            embeddings=embeddings,
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to store vectors in ChromaDB",
+        )
 
-    # Store vectors in ChromaDB
-    store_chunks(
-        chunks=all_chunks,
-        embeddings=embeddings,
-    )
-
-    # Create PostgreSQL document record
+    # Save to PostgreSQL
     new_document = Document(
         document_id=document_id,
         filename=file.filename,
         page_count=page_count,
         chunk_count=len(all_chunks),
         status="processed",
+        version=new_version,
+        is_active=True,
+        supersedes_id=supersedes_id,
     )
 
     try:
@@ -130,13 +211,10 @@ async def process_document(
 
     except Exception:
         db.rollback()
-
-        # Remove vectors if PostgreSQL storage fails
         delete_document_chunks(document_id)
-
         raise HTTPException(
             status_code=500,
-            detail="Failed to save document",
+            detail="Failed to save document record",
         )
 
     return {
@@ -146,25 +224,24 @@ async def process_document(
         "page_count": new_document.page_count,
         "chunk_count": new_document.chunk_count,
         "status": new_document.status,
+        "version": new_document.version,
+        "is_active": new_document.is_active,
+        "supersedes_id": new_document.supersedes_id,
         "uploaded_at": new_document.uploaded_at,
-        "message": "Document processed and stored successfully",
+        "message": f"Document '{file.filename}' (v{new_version}) processed and indexed successfully into ChromaDB!",
     }
 
 
 def get_documents(
     db: Session,
 ) -> list[Document]:
-
-    documents = db.query(Document).all()
-
-    return documents
+    return db.query(Document).order_by(Document.uploaded_at.desc()).all()
 
 
 def remove_document(
     document_id: str,
     db: Session,
 ) -> dict:
-
     document = (
         db.query(Document)
         .filter(Document.document_id == document_id)
@@ -178,22 +255,10 @@ def remove_document(
         )
 
     filename = document.filename
+    delete_document_chunks(document_id)
 
-    try:
-        delete_document_chunks(document_id)
-
-        db.delete(document)
-
-        db.commit()
-
-    except Exception as error:
-
-        db.rollback()
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to delete document: {str(error)}",
-        )
+    db.delete(document)
+    db.commit()
 
     return {
         "message": "Document deleted successfully",

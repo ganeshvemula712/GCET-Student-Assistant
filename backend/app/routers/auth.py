@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, Request
-from fastapi.security import OAuth2PasswordRequestForm
+import os
+from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
 from backend.app.core.rate_limiter import limiter
 from backend.app.schemas.user import (
+    GoogleAuthRequest,
     Token,
     RefreshTokenRequest,
     RefreshTokenResponse,
@@ -13,6 +14,7 @@ from backend.app.schemas.user import (
     UserResponse,
 )
 from backend.app.services.auth_service import (
+    authenticate_google_user,
     login_user,
     refresh_access_token,
     register_user,
@@ -32,12 +34,13 @@ router = APIRouter(
     response_model=UserResponse,
     status_code=201,
 )
-@limiter.limit("3/minute")
+@limiter.limit("30/minute")
 def register(
     request: Request,
     user: UserRegister,
     db: Session = Depends(get_db),
 ):
+    user.email = user.email.strip().lower()
     return register_user(
         user=user,
         db=db,
@@ -45,21 +48,47 @@ def register(
 
 
 # --------------------------------------------------------
-# Login User
+# Login User (Supports both form-data and JSON)
 # --------------------------------------------------------
 @router.post(
     "/login",
     response_model=Token,
 )
-@limiter.limit("5/minute")
-def login(
+@limiter.limit("60/minute")
+async def login(
     request: Request,
-    form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
+    email = None
+    password = None
+
+    content_type = request.headers.get("content-type", "")
+
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            email = body.get("email") or body.get("username")
+            password = body.get("password")
+        except Exception:
+            pass
+
+    if not email or not password:
+        try:
+            form = await request.form()
+            email = email or form.get("username") or form.get("email")
+            password = password or form.get("password")
+        except Exception:
+            pass
+
+    if not email or not password:
+        raise HTTPException(
+            status_code=400,
+            detail="Email and password are required.",
+        )
+
     user = UserLogin(
-        email=form_data.username,
-        password=form_data.password,
+        email=str(email).strip().lower(),
+        password=str(password),
     )
 
     tokens = login_user(
@@ -75,13 +104,52 @@ def login(
 
 
 # --------------------------------------------------------
+# Google Auth Endpoint
+# --------------------------------------------------------
+@router.post(
+    "/google",
+    response_model=Token,
+)
+@limiter.limit("30/minute")
+def google_auth(
+    request: Request,
+    body: GoogleAuthRequest,
+    db: Session = Depends(get_db),
+):
+    return authenticate_google_user(
+        body=body,
+        db=db,
+    )
+
+
+# --------------------------------------------------------
+# Google Auth URL Config Endpoint
+# --------------------------------------------------------
+@router.get("/google/url")
+def get_google_auth_url():
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "")
+    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:5173/auth/google/callback")
+    auth_url = (
+        f"https://accounts.google.com/o/oauth2/v2/auth?"
+        f"client_id={client_id}&redirect_uri={redirect_uri}&"
+        f"response_type=code&scope=openid%20email%20profile"
+    )
+    return {
+        "auth_url": auth_url,
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "configured": bool(client_id),
+    }
+
+
+# --------------------------------------------------------
 # Refresh Access Token
 # --------------------------------------------------------
 @router.post(
     "/refresh",
     response_model=RefreshTokenResponse,
 )
-@limiter.limit("10/minute")
+@limiter.limit("60/minute")
 def refresh_token(
     request: Request,
     body: RefreshTokenRequest,

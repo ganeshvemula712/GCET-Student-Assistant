@@ -10,9 +10,8 @@ from backend.app.services.rag import (
     generate_rag_answer,
 )
 from backend.app.services.retrieval import retrieve_relevant_chunks
-from backend.app.services.title import generate_conversation_title
 
-RELEVANCE_THRESHOLD = 0.75
+RELEVANCE_THRESHOLD = 1.25
 
 
 def process_chat(
@@ -20,9 +19,9 @@ def process_chat(
     current_user: User,
     db: Session,
 ):
-    # --------------------------------------------------
-    # Find conversation that belongs to current user
-    # --------------------------------------------------
+    sources = []
+
+    # 1. Fetch or create conversation
     conversation = (
         db.query(Conversation)
         .filter(
@@ -32,49 +31,33 @@ def process_chat(
         .first()
     )
 
-    # --------------------------------------------------
-    # Create conversation if it doesn't exist
-    # --------------------------------------------------
     if conversation is None:
-
+        short_title = request.question.strip()
+        if len(short_title) > 40:
+            short_title = short_title[:37] + "..."
         conversation = Conversation(
             conversation_id=request.conversation_id,
-            title="New Conversation",
+            title=short_title or "New Conversation",
             user_id=current_user.id,
         )
-
         db.add(conversation)
         db.commit()
         db.refresh(conversation)
 
-    # --------------------------------------------------
-    # Generate title only once
-    # --------------------------------------------------
     if conversation.title == "New Conversation":
-        try:
-            new_title = generate_conversation_title(
-                request.question
-            )
+        short_title = request.question.strip()
+        if len(short_title) > 40:
+            short_title = short_title[:37] + "..."
+        conversation.title = short_title
+        db.commit()
+        db.refresh(conversation)
 
-            conversation.title = new_title
-
-            db.commit()
-            db.refresh(conversation)
-
-        except Exception as e:
-            print(f"Title generation failed: {e}")
-
-    # --------------------------------------------------
-    # Load memory
-    # --------------------------------------------------
+    # 2. Get history & save user message
     conversation_history = get_conversation_history(
         conversation_id=request.conversation_id,
         db=db,
     )
 
-    # --------------------------------------------------
-    # Save user message
-    # --------------------------------------------------
     save_message(
         db=db,
         conversation_id=request.conversation_id,
@@ -82,35 +65,35 @@ def process_chat(
         content=request.question,
     )
 
-    # --------------------------------------------------
-    # Retrieve relevant chunks
-    # --------------------------------------------------
+    # 3. Retrieve relevant chunks
     retrieved_chunks = retrieve_relevant_chunks(
         question=request.question,
-        n_results=3,
+        n_results=4,
     )
 
     relevant_chunks = [
         chunk
         for chunk in retrieved_chunks
-        if chunk["distance"] <= RELEVANCE_THRESHOLD
+        if chunk.get("distance", 2.0) <= RELEVANCE_THRESHOLD
     ]
-    # --------------------------------------------------
-    # General AI
-    # --------------------------------------------------
-    if not relevant_chunks:
 
+    # 4. General AI fallback
+    if not relevant_chunks:
         general_prompt = f"""
-Previous Conversation:
+=========================
+Conversation History
+=========================
 
 {conversation_history}
 
-Current Question:
+=========================
+Current Student Question
+=========================
 
 {request.question}
 """
 
-        answer = generate_general_answer(
+        answer, confidence, follow_up_questions = generate_general_answer(
             general_prompt
         )
 
@@ -119,35 +102,45 @@ Current Question:
             conversation_id=request.conversation_id,
             role="assistant",
             content=answer,
+            sources=[],
+            confidence=confidence,
+            follow_up_questions=follow_up_questions,
         )
 
         return ChatResponse(
             answer=answer,
             sources=[],
+            confidence=confidence,
+            follow_up_questions=follow_up_questions,
         )
-    # --------------------------------------------------
-    # RAG
-    # --------------------------------------------------
+
+    # 5. RAG Answer
     context = "\n\n".join(
         chunk["text"]
         for chunk in relevant_chunks
     )
 
     full_context = f"""
-Previous Conversation:
+=========================
+Conversation History
+=========================
 
 {conversation_history}
 
-Knowledge Base:
+=========================
+GCET Knowledge Base
+=========================
 
 {context}
 
-Current Question:
+=========================
+Current Student Question
+=========================
 
 {request.question}
 """
 
-    answer = generate_rag_answer(
+    answer, confidence, follow_up_questions = generate_rag_answer(
         question=request.question,
         context=full_context,
     )
@@ -176,9 +169,14 @@ Current Question:
         conversation_id=request.conversation_id,
         role="assistant",
         content=answer,
+        sources=[source.model_dump() for source in sources],
+        confidence=confidence,
+        follow_up_questions=follow_up_questions,
     )
 
     return ChatResponse(
         answer=answer,
         sources=sources,
+        confidence=confidence,
+        follow_up_questions=follow_up_questions,
     )

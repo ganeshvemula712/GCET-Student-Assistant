@@ -13,8 +13,13 @@ class ConversationResponse(BaseModel):
 
 
 class MessageResponse(BaseModel):
+    id: int
     role: str
     content: str
+    created_at: datetime
+    sources: list[dict] = []
+    confidence: int | None = None
+    follow_up_questions: list[str] = []
 
 
 class ConversationDetailResponse(BaseModel):

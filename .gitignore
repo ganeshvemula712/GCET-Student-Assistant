@@ -8,3 +8,5 @@ chroma_db/
 .vscode/
 logs/
 *.sqlite3
+test.db
+scratch/

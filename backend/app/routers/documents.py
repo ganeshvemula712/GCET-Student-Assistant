@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, UploadFile
+from fastapi import APIRouter, Depends, Form, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
-from backend.app.core.security import require_admin
+from backend.app.core.rate_limiter import limiter
+from backend.app.core.security import get_current_user, require_admin
 from backend.app.models.user import User
 from backend.app.schemas.document import (
     DocumentDeleteResponse,
@@ -14,10 +15,6 @@ from backend.app.services.documents import (
     process_document,
     remove_document,
 )
-from fastapi import APIRouter, Depends, Request, UploadFile
-from backend.app.core.rate_limiter import limiter
-
-
 
 router = APIRouter(
     prefix="/documents",
@@ -33,21 +30,23 @@ router = APIRouter(
 async def upload_document(
     request: Request,
     file: UploadFile,
+    supersedes_id: str | None = Form(None),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     return await process_document(
         file=file,
-        current_user=current_user,
         db=db,
+        supersedes_id=supersedes_id,
     )
+
 
 @router.get(
     "",
     response_model=list[DocumentResponse],
 )
 def get_all_documents(
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     return get_documents(db)

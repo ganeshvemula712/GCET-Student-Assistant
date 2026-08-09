@@ -102,8 +102,19 @@ def get_conversation(
         created_at=conversation.created_at,
         messages=[
             MessageResponse(
+                id=message.id,
                 role=message.role,
                 content=message.content,
+                created_at=message.created_at,
+                sources=[
+                    {
+                        "filename": s.get("filename") if isinstance(s, dict) else getattr(s, "filename", ""),
+                        "page": s.get("page") if isinstance(s, dict) else getattr(s, "page", 0),
+                    }
+                    for s in (message.sources or [])
+                ],
+                confidence=message.confidence,
+                follow_up_questions=message.follow_up_questions or [],
             )
             for message in messages
         ],
@@ -187,6 +198,8 @@ def delete_conversation(
         "message": "Conversation deleted successfully",
         "conversation_id": conversation_id,
     }
+
+
 # --------------------------------------------------------
 # Search Conversations
 # --------------------------------------------------------

@@ -55,7 +55,7 @@ def run_startup_checks() -> None:
     """
 
     print("\n" + "=" * 55)
-    print("🚀 Starting GCET Student Assistant")
+    print("[START] Starting GCET Student Assistant Service")
     print("=" * 55)
 
     checks = {
@@ -68,9 +68,9 @@ def run_startup_checks() -> None:
 
     for service, status in checks.items():
         if status:
-            print(f"✅ {service} Connected")
+            print(f"[OK] {service} Connected")
         else:
-            print(f"❌ {service} Connection Failed")
+            print(f"[FAIL] {service} Connection Failed")
             failed = True
 
     print("=" * 55)
@@ -80,5 +80,5 @@ def run_startup_checks() -> None:
             "Startup validation failed. One or more services are unavailable."
         )
 
-    print("🎉 Application Ready")
+    print("[READY] Application Ready")
     print("=" * 55 + "\n")

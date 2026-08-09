@@ -17,27 +17,32 @@ def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
-    """
-    Validate JWT access token and return the current user.
-    """
 
     credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
+        status_code=401,
         detail="Could not validate credentials.",
     )
 
     try:
         payload = decode_access_token(token)
 
-        if payload.get("type") != "access":
-            raise credentials_exception
+        print("=" * 60)
+        print("TOKEN")
+        print(token)
+
+        print("PAYLOAD")
+        print(payload)
 
         email = payload.get("sub")
 
         if email is None:
             raise credentials_exception
 
-    except JWTError:
+        if payload.get("type") != "access":
+            raise credentials_exception
+
+    except Exception as e:
+        print(e)
         raise credentials_exception
 
     user = (
@@ -50,7 +55,6 @@ def get_current_user(
         raise credentials_exception
 
     return user
-
 
 # --------------------------------------------------------
 # Role-Based Authorization

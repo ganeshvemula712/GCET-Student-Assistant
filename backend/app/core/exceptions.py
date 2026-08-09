@@ -36,11 +36,10 @@ class DatabaseException(HTTPException):
             detail="Database operation failed.",
         )
 
+
 class UserAlreadyExistsException(HTTPException):
-
     def __init__(self):
-
         super().__init__(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered.",
+            detail="An account with this email already exists. Please sign in instead.",
         )

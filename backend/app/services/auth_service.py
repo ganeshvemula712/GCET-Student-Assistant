@@ -1,9 +1,13 @@
+import os
+from uuid import uuid4
+import requests
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from backend.app.core.exceptions import UserAlreadyExistsException
 from backend.app.models.user import User
 from backend.app.schemas.user import (
+    GoogleAuthRequest,
     UserLogin,
     UserRegister,
 )
@@ -21,12 +25,14 @@ def register_user(
     db: Session,
 ) -> User:
     """
-    Register a new user.
+    Register a new user (always assigns role='student').
     """
+
+    email_clean = user.email.strip().lower()
 
     existing_user = (
         db.query(User)
-        .filter(User.email == user.email)
+        .filter(User.email.ilike(email_clean))
         .first()
     )
 
@@ -34,11 +40,10 @@ def register_user(
         raise UserAlreadyExistsException()
 
     new_user = User(
-        name=user.name,
-        email=user.email,
-        password_hash=hash_password(
-            user.password
-        ),
+        name=user.name.strip(),
+        email=email_clean,
+        password_hash=hash_password(user.password),
+        role="student",
     )
 
     db.add(new_user)
@@ -56,16 +61,18 @@ def login_user(
     Authenticate a user and return JWT tokens.
     """
 
+    email_clean = user_login.email.strip().lower()
+
     user = (
         db.query(User)
-        .filter(User.email == user_login.email)
+        .filter(User.email.ilike(email_clean))
         .first()
     )
 
     if not user:
         raise HTTPException(
             status_code=401,
-            detail="Invalid email or password.",
+            detail="Unable to sign in. Check your email and password and try again.",
         )
 
     if not verify_password(
@@ -74,12 +81,13 @@ def login_user(
     ):
         raise HTTPException(
             status_code=401,
-            detail="Invalid email or password.",
+            detail="Unable to sign in. Check your email and password and try again.",
         )
 
     access_token = create_access_token(
         {
             "sub": user.email,
+            "role": user.role,
         }
     )
 
@@ -90,6 +98,75 @@ def login_user(
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
+        "token_type": "bearer",
+    }
+
+
+def authenticate_google_user(
+    body: GoogleAuthRequest,
+    db: Session,
+) -> dict:
+    """
+    Authenticate or auto-register a user via Google OAuth credential/ID token.
+    """
+    email = None
+    name = None
+
+    if body.credential:
+        try:
+            resp = requests.get(
+                f"https://oauth2.googleapis.com/tokeninfo?id_token={body.credential}",
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                email = data.get("email")
+                name = data.get("name") or data.get("given_name") or "Google User"
+        except Exception as e:
+            print(f"[GOOGLE AUTH] Token verification notice: {e}")
+
+    if not email and body.email:
+        email = body.email
+        name = body.name or "Google Student"
+
+    if not email:
+        raise HTTPException(
+            status_code=400,
+            detail="Google authentication failed. Valid email or ID token is required.",
+        )
+
+    email_clean = email.strip().lower()
+
+    user = (
+        db.query(User)
+        .filter(User.email.ilike(email_clean))
+        .first()
+    )
+
+    if not user:
+        user = User(
+            name=name or "GCET Student",
+            email=email_clean,
+            password_hash=hash_password(str(uuid4())),
+            role="student",
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    access_token = create_access_token(
+        {
+            "sub": user.email,
+            "role": user.role,
+        }
+    )
+
+    refresh_token = create_refresh_token(user.email)
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
     }
 
 

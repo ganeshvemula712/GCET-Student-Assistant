@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.app.core.database import Base
@@ -42,6 +42,23 @@ class Document(Base):
         String,
         nullable=False,
         default="processed",
+    )
+
+    version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+    )
+
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+    )
+
+    supersedes_id: Mapped[str] = mapped_column(
+        String,
+        nullable=True,
     )
 
     uploaded_at: Mapped[datetime] = mapped_column(

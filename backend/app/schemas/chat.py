@@ -27,3 +27,5 @@ class ChatResponse(BaseModel):
     answer: str
 
     sources: list[Source] = []
+    confidence: int = 0
+    follow_up_questions: list[str] = []

@@ -20,6 +20,16 @@ class UserLogin(BaseModel):
     password: str
 
 
+class GoogleAuthRequest(BaseModel):
+    """
+    Request schema for Google OAuth authentication.
+    """
+
+    credential: str | None = None
+    email: EmailStr | None = None
+    name: str | None = None
+
+
 class UserResponse(BaseModel):
     """
     User details returned by the API.

@@ -18,8 +18,9 @@ def store_chunks(
     metadatas = []
 
     for chunk in chunks:
-
-        metadata = chunk["metadata"]
+        metadata = dict(chunk["metadata"])
+        if "is_active" not in metadata:
+            metadata["is_active"] = True
 
         chunk_id = (
             f"{metadata['document_id']}_"
@@ -44,15 +45,31 @@ def search_chunks(
     n_results: int = 3,
 ) -> list[dict]:
 
-    results = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=n_results,
-        include=["documents", "metadatas", "distances"],
-    )
+    # Priority 1: Query active document vectors only
+    try:
+        results = collection.query(
+            query_embeddings=[query_embedding],
+            n_results=n_results,
+            where={"is_active": True},
+            include=["documents", "metadatas", "distances"],
+        )
+    except Exception:
+        results = {}
 
     documents = results.get("documents", [])
     metadatas = results.get("metadatas", [])
     distances = results.get("distances", [])
+
+    # Priority 2: Fallback query without filter if no active match
+    if not documents or not documents[0]:
+        results = collection.query(
+            query_embeddings=[query_embedding],
+            n_results=n_results,
+            include=["documents", "metadatas", "distances"],
+        )
+        documents = results.get("documents", [])
+        metadatas = results.get("metadatas", [])
+        distances = results.get("distances", [])
 
     if not documents or not documents[0]:
         return []
@@ -73,10 +90,37 @@ def search_chunks(
         )
 
     return retrieved_chunks
-def delete_document_chunks(document_id: str) -> None:
 
-    collection.delete(
-        where={
-            "document_id": document_id,
-        }
-    )
+
+def delete_document_chunks(document_id: str) -> None:
+    try:
+        collection.delete(
+            where={
+                "document_id": document_id,
+            }
+        )
+    except Exception:
+        pass
+
+
+def mark_document_chunks_inactive(document_id: str) -> None:
+    """
+    Mark chunks of a superseded document as inactive so they are not retrieved during normal RAG.
+    """
+    try:
+        results = collection.get(where={"document_id": document_id})
+        if results and results.get("ids"):
+            ids = results["ids"]
+            metadatas = results.get("metadatas", [])
+            updated_metadatas = []
+            for meta in metadatas:
+                m = dict(meta) if meta else {}
+                m["is_active"] = False
+                updated_metadatas.append(m)
+
+            collection.update(
+                ids=ids,
+                metadatas=updated_metadatas
+            )
+    except Exception:
+        pass
