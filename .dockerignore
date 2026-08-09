@@ -1,0 +1,16 @@
+.env
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+node_modules
+frontend/node_modules
+frontend/dist
+.git
+.gitignore
+logs
+scratch
+tests
+*.sqlite3
+test.db
+gcet_student_assistant_backup.dump
