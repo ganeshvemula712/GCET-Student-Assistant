@@ -10,3 +10,4 @@ logs/
 *.sqlite3
 test.db
 scratch/
+gcet_student_assistant_backup.dump
