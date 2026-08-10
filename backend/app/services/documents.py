@@ -1,10 +1,6 @@
 from hashlib import sha256
 from io import BytesIO
 
-import pymupdf
-import docx
-from PIL import Image
-
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
@@ -65,6 +61,7 @@ async def process_document(
     # 1. Process PDF
     if filename_lower.endswith(".pdf"):
         try:
+            import pymupdf
             pdf_document = pymupdf.open(
                 stream=BytesIO(content),
                 filetype="pdf",
@@ -84,6 +81,7 @@ async def process_document(
     # 2. Process DOCX / DOC
     elif filename_lower.endswith((".docx", ".doc")):
         try:
+            import docx
             doc_obj = docx.Document(BytesIO(content))
             lines = []
             for p in doc_obj.paragraphs:
@@ -109,6 +107,7 @@ async def process_document(
     # 3. Process Images (JPG, JPEG, PNG) via Gemini Multimodal OCR Vision
     elif filename_lower.endswith((".jpg", ".jpeg", ".png")):
         try:
+            from PIL import Image
             mime_type = "image/jpeg" if filename_lower.endswith((".jpg", ".jpeg")) else "image/png"
             image_part = types.Part.from_bytes(data=content, mime_type=mime_type)
 
