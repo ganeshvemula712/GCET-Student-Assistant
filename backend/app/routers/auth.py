@@ -48,51 +48,22 @@ def register(
 
 
 # --------------------------------------------------------
-# Login User (Supports both form-data and JSON)
+# Login User (Accepts JSON body {email, password}; exposes schema in Swagger UI)
 # --------------------------------------------------------
 @router.post(
     "/login",
     response_model=Token,
 )
 @limiter.limit("60/minute")
-async def login(
+def login(
     request: Request,
+    user_login: UserLogin,
     db: Session = Depends(get_db),
 ):
-    email = None
-    password = None
-
-    content_type = request.headers.get("content-type", "")
-
-    if "application/json" in content_type:
-        try:
-            body = await request.json()
-            email = body.get("email") or body.get("username")
-            password = body.get("password")
-        except Exception:
-            pass
-
-    if not email or not password:
-        try:
-            form = await request.form()
-            email = email or form.get("username") or form.get("email")
-            password = password or form.get("password")
-        except Exception:
-            pass
-
-    if not email or not password:
-        raise HTTPException(
-            status_code=400,
-            detail="Email and password are required.",
-        )
-
-    user = UserLogin(
-        email=str(email).strip().lower(),
-        password=str(password),
-    )
+    user_login.email = user_login.email.strip().lower()
 
     tokens = login_user(
-        user_login=user,
+        user_login=user_login,
         db=db,
     )
 
