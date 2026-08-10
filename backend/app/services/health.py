@@ -46,6 +46,20 @@ def check_gemini() -> bool:
         return False
 
 
+def check_embeddings() -> bool:
+    """
+    Pre-warm and check SentenceTransformer embedding model availability.
+    """
+    try:
+        from backend.app.services.embeddings import get_embedding_model
+        model = get_embedding_model()
+        return model is not None
+
+    except Exception as e:
+        print(f"[EMBEDDING WARMUP ERROR] {e}")
+        return False
+
+
 def run_startup_checks() -> None:
     """
     Run all startup validation checks.
@@ -62,6 +76,7 @@ def run_startup_checks() -> None:
         "Database": check_database(),
         "ChromaDB": check_chromadb(),
         "Gemini": check_gemini(),
+        "Embedding Model": check_embeddings(),
     }
 
     failed = False
