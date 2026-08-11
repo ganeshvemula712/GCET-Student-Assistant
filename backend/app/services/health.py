@@ -48,15 +48,15 @@ def check_gemini() -> bool:
 
 def check_embeddings() -> bool:
     """
-    Pre-warm and check SentenceTransformer embedding model availability.
+    Verify Gemini Embedding service client configuration locally.
+    Does not execute live API network calls during startup/ping checks.
     """
     try:
-        from backend.app.services.embeddings import get_embedding_model
-        model = get_embedding_model()
-        return model is not None
+        from backend.app.services.gemini import client
+        return client is not None
 
     except Exception as e:
-        print(f"[EMBEDDING WARMUP ERROR] {e}")
+        print(f"[EMBEDDING HEALTH CHECK ERROR] {e}")
         return False
 
 

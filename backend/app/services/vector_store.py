@@ -3,9 +3,12 @@ import chromadb
 
 client = chromadb.PersistentClient(path="chroma_db")
 
-collection = client.get_or_create_collection(
-    name="gcet_documents"
-)
+
+def get_collection():
+    return client.get_or_create_collection(name="gcet_documents")
+
+
+collection = get_collection()
 
 
 def store_chunks(
@@ -32,7 +35,8 @@ def store_chunks(
         documents.append(chunk["text"])
         metadatas.append(metadata)
 
-    collection.upsert(
+    coll = get_collection()
+    coll.upsert(
         ids=ids,
         documents=documents,
         metadatas=metadatas,
@@ -45,9 +49,10 @@ def search_chunks(
     n_results: int = 3,
 ) -> list[dict]:
 
+    coll = get_collection()
     # Priority 1: Query active document vectors only
     try:
-        results = collection.query(
+        results = coll.query(
             query_embeddings=[query_embedding],
             n_results=n_results,
             where={"is_active": True},

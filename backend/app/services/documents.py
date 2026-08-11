@@ -72,6 +72,34 @@ async def process_document(
                 text = page.get_text()
                 if text.strip():
                     extracted_pages.append((page_index + 1, text))
+                else:
+                    # Fallback to Gemini Vision OCR for scanned/image-only PDF pages
+                    try:
+                        pix = page.get_pixmap(dpi=150)
+                        img_bytes = pix.tobytes("jpeg")
+                        image_part = types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg")
+
+                        ocr_prompt = (
+                            "You are an expert OCR and document analysis engine for GCET College. "
+                            "Extract all text, notices, examination guidelines, and timetable schedules from this document image. "
+                            "For timetables, format them as clean, structured Markdown tables with Day, Time, Subject, Room, and Faculty columns. "
+                            "Preserve exact course names, exam dates, and timing."
+                        )
+
+                        response = gemini_client.models.generate_content(
+                            model="gemini-2.5-flash",
+                            contents=[image_part, ocr_prompt],
+                        )
+                        ocr_text = response.text or ""
+                        if ocr_text.strip():
+                            extracted_pages.append((page_index + 1, ocr_text))
+                    except Exception as ocr_err:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Failed to process OCR for scanned PDF page {page_index + 1}: {str(ocr_err)}",
+                        )
+        except HTTPException:
+            raise
         except Exception:
             raise HTTPException(
                 status_code=400,
@@ -147,21 +175,18 @@ async def process_document(
 
     all_chunks = []
     for p_num, p_text in extracted_pages:
-        chunks = chunk_text(p_text)
-        for chunk_index, chunk in enumerate(chunks):
-            all_chunks.append(
-                {
-                    "text": chunk,
-                    "metadata": {
-                        "document_id": document_id,
-                        "filename": file.filename,
-                        "page": p_num,
-                        "chunk_index": chunk_index,
-                        "version": new_version,
-                        "is_active": True,
-                    },
-                }
-            )
+        page_chunks = chunk_text(
+            text=p_text,
+            filename=file.filename,
+            page_number=p_num,
+            document_id=document_id,
+            chunk_size=1000,
+            chunk_overlap=200,
+        )
+        for chunk in page_chunks:
+            chunk["metadata"]["version"] = new_version
+            chunk["metadata"]["is_active"] = True
+            all_chunks.append(chunk)
 
     if not all_chunks:
         raise HTTPException(

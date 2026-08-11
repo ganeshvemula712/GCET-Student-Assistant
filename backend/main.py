@@ -69,6 +69,7 @@ app.middleware("http")(log_requests)
 
 # ---------- CORS Middleware (Must be added last to be outermost) ----------
 default_origins = [
+    "https://gcet-student-assistant-frontend.onrender.com",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:5174",
