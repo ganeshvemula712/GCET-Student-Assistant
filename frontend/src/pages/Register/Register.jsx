@@ -8,6 +8,7 @@ import AuthCard from "@/components/auth/AuthCard";
 import AuthField from "@/components/auth/AuthField";
 import useRegister from "@/hooks/useRegister";
 import { registerSchema } from "@/schema/loginSchema";
+import { formatErrorMessage } from "@/utils/error";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -23,7 +24,7 @@ export default function Register() {
       toast.success("Account created. You can sign in now.");
       navigate("/login");
     } catch (error) {
-      toast.error(error?.response?.data?.message || error?.response?.data?.detail || "Unable to create your account.");
+      toast.error(formatErrorMessage(error, "Unable to create your account. Please try again."));
     }
   }
 

@@ -11,6 +11,7 @@ import { loginWithGoogle } from "@/services/authService";
 import { saveTokens } from "@/utils/token";
 import { useAuth } from "@/context/AuthContext";
 import { loginSchema } from "@/schema/loginSchema";
+import { formatErrorMessage } from "@/utils/error";
 import AuthCard from "@/components/auth/AuthCard";
 import AuthField from "@/components/auth/AuthField";
 
@@ -38,9 +39,7 @@ export default function LoginForm() {
 
       navigate("/dashboard");
     } catch (err) {
-      const serverMsg = err?.response?.data?.detail || err?.response?.data?.message;
-      const errorMsg = serverMsg || (err?.code === "ERR_NETWORK" || !err?.response ? "Unable to connect to backend server. Please check your network connection." : "Unable to sign in. Check your details and try again.");
-      toast.error(errorMsg);
+      toast.error(formatErrorMessage(err, "Unable to sign in. Check your details and try again."));
     }
   }
 
@@ -58,7 +57,7 @@ export default function LoginForm() {
       navigate("/dashboard");
     } catch (err) {
       console.error(err);
-      toast.error(err?.response?.data?.detail || "Google authentication failed. Please try again.");
+      toast.error(formatErrorMessage(err, "Google authentication failed. Please try again."));
     } finally {
       setGoogleLoading(false);
     }

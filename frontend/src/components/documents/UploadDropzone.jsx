@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { UploadCloud, AlertCircle, LoaderCircle, X, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { formatErrorMessage } from "@/utils/error";
 import StatusTimeline from "./StatusTimeline";
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
@@ -71,7 +72,7 @@ export default function UploadDropzone({ uploadMutation, existingDocuments = [] 
         }, 3000);
       },
       onError: (err) => {
-        const msg = err.response?.data?.detail || "Failed to upload document.";
+        const msg = formatErrorMessage(err, "Failed to upload document.");
         setErrorMsg(msg);
         toast.error(msg);
       },
