@@ -173,9 +173,11 @@ async def stream_chat(
             content=question,
         )
 
+        effective_question = search_query
+
         if is_rag_mode:
             # CASE A — Grounded GCET RAG Mode
-            print(f"[CHAT] Grounded GCET context found ({len(relevant)} relevant chunks). Executing RAG stream...")
+            print(f"[CHAT] Grounded GCET context found ({len(relevant)} relevant chunks). Executing RAG stream for effective_question='{effective_question}'...")
             context_text = "\n\n".join(
                 f"--- Document: {c['metadata'].get('filename')} (Page {c['metadata'].get('page')}) ---\n{c['text']}"
                 for c in relevant
@@ -183,7 +185,7 @@ async def stream_chat(
 
             try:
                 stream_response = generate_rag_answer_stream(
-                    question=question,
+                    question=effective_question,
                     context=context_text,
                     history=history,
                 )
@@ -217,10 +219,10 @@ async def stream_chat(
             confidence = max(80, min(98, int(100 - (avg_dist * 15))))
         else:
             # CASE B — General Knowledge Mode
-            print(f"[CHAT] Routing to General Gemini stream (is_explicit_gcet={is_explicit_gcet}, rel_count={len(relevant)})...")
+            print(f"[CHAT] Routing to General Gemini stream (is_explicit_gcet={is_explicit_gcet}, rel_count={len(relevant)}) for effective_question='{effective_question}'...")
             try:
                 stream_response = generate_general_answer_stream(
-                    question=question,
+                    question=effective_question,
                     history=history,
                 )
                 for chunk_text in stream_response:

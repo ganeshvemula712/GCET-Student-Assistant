@@ -53,6 +53,13 @@ FOLLOWUP_PREFIXES = (
     "and for", "for cse", "for ece", "for eee", "which one", "how is it", "how does it"
 )
 
+FOLLOWUP_EXPLICIT_PATTERNS = [
+    r"^\s*what\s+about\s+(for\s+)?",
+    r"^\s*how\s+about\s+(for\s+)?",
+    r"^\s*and\s+for\s+",
+    r"^\s*for\s+(cse|ece|eee|mech|civil|ds|aiml|it)\s*\??$",
+]
+
 MATH_PATTERNS = [
     r"^\s*how\s+much\s+is\s+\d+", r"^\s*\d+\s*[\+\-\*\/]\s*\d+"
 ]
@@ -69,94 +76,86 @@ def build_contextual_search_query(
     conversation_id: str,
 ) -> tuple[str, bool]:
     """
-    Constructs a concise, topic-preserving search query for vector retrieval
-    and conversation memory across both GCET and General Knowledge contexts.
+    Constructs an effective, contextually framed question for vector retrieval
+    and LLM prompt generation when the user asks a follow-up question.
 
-    Returns tuple: (search_query, is_followup)
+    Returns tuple: (effective_question, is_followup)
     Consumes 0 Gemini API calls/quota (100% deterministic, 0ms).
     """
     q_clean = question.strip()
     q_lower = q_clean.lower()
     words = set(re.findall(r"\b\w+\b", q_lower))
 
-    # 1. Check for pure Math / Calculator expressions
-    is_math = any(re.search(pat, q_lower) for pat in MATH_PATTERNS)
-    if is_math:
+    # 1. Math / Calculation expressions are never follow-ups
+    if any(re.search(pat, q_lower) for pat in MATH_PATTERNS):
         return q_clean, False
 
-    # 2. Check for explicit standalone general CS questions (e.g. "What is machine learning?")
-    is_standalone_general_concept = any(re.search(pat, q_lower) for pat in GENERAL_CONCEPT_PATTERNS)
-    has_explicit_gcet_brand = any(brand in q_lower for brand in ("gcet", "geethanjali", "ar22", "r22", "r20"))
-
-    if is_standalone_general_concept and not has_explicit_gcet_brand:
-        return q_clean, False
-
-    # 3. Check for explicit standalone GCET topic nouns in current question (e.g., "What is the attendance requirement?")
-    current_gcet_topics = words.intersection(GCET_ACADEMIC_TOPICS)
+    # 2. Standalone general CS concepts without anaphora are not follow-ups
     has_anaphora = any(p in words for p in ANAPHORA_PRONOUNS)
+    has_followup_pattern = any(re.search(pat, q_lower) for pat in FOLLOWUP_EXPLICIT_PATTERNS)
     has_followup_prefix = any(q_lower.startswith(p) for p in FOLLOWUP_PREFIXES)
 
-    if current_gcet_topics and not has_anaphora and not has_followup_prefix:
+    is_standalone_general = any(re.search(pat, q_lower) for pat in GENERAL_CONCEPT_PATTERNS)
+    has_explicit_gcet_brand = any(brand in q_lower for brand in ("gcet", "geethanjali", "ar22", "r22", "r20"))
+
+    if is_standalone_general and not has_explicit_gcet_brand and not has_anaphora and not has_followup_pattern:
         return q_clean, False
 
-    # 4. Determine if current question is a follow-up intent
-    is_short = len(words) <= 7
-    is_followup_intent = is_short or has_anaphora or has_followup_prefix or bool(words.intersection(BRANCH_MODIFIERS))
-
-    if not is_followup_intent:
+    # 3. Check for standalone GCET topic nouns (e.g. "What is the attendance requirement?")
+    current_gcet_topics = words.intersection(GCET_ACADEMIC_TOPICS)
+    if current_gcet_topics and not has_anaphora and not has_followup_pattern and not (has_followup_prefix and len(words) <= 5):
         return q_clean, False
 
-    # 5. Fetch recent user messages from PostgreSQL (last 5 turns)
-    past_messages = (
-        db.query(Message)
-        .filter(Message.conversation_id == conversation_id)
+    # 4. Determine if current question is a follow-up
+    is_short_branch = len(words) <= 5 and bool(words.intersection(BRANCH_MODIFIERS))
+    is_followup = is_short_branch or has_anaphora or has_followup_pattern or (has_followup_prefix and len(words) <= 7)
+
+    if not is_followup:
+        return q_clean, False
+
+    # 5. Fetch previous user messages from PostgreSQL for current conversation_id ONLY
+    past_user_msgs = (
+        db.query(Message.content)
+        .filter(
+            Message.conversation_id == conversation_id,
+            Message.role == "user"
+        )
         .order_by(Message.created_at.asc())
         .all()
     )
 
-    if not past_messages:
-        return q_clean, False
-
-    user_past = [m.content for m in past_messages if m.role == "user" and m.content.strip() != q_clean]
+    user_past = [m[0] for m in past_user_msgs if m[0].strip() != q_clean]
 
     if not user_past:
         return q_clean, False
 
-    history_window = user_past[-5:]
-    last_user_q = history_window[-1]
+    # Immediate previous turn (Q1) takes 1st priority for follow-up resolution
+    last_user_q = user_past[-1].strip()
 
-    # 6. Extract root topic and active branch for GCET follow-ups vs General follow-ups
-    combined_history = " ".join(history_window).lower()
-    history_words = set(re.findall(r"\b\w+\b", combined_history))
-    history_gcet_topics = history_words.intersection(GCET_ACADEMIC_TOPICS)
+    if any(re.search(pat, last_user_q.lower()) for pat in MATH_PATTERNS):
+        return q_clean, False
 
-    if history_gcet_topics or has_explicit_gcet_brand:
-        # --- GCET FOLLOW-UP CONTEXT ---
-        root_question = history_window[0]
-        for uq in reversed(history_window):
-            uq_words = set(re.findall(r"\b\w+\b", uq.lower()))
-            if uq_words.intersection(GCET_ACADEMIC_TOPICS):
-                root_question = uq
-                break
+    # Construct effective question:
+    # Handle branch follow-up: e.g. Q1="What is the minimum attendance required at GCET?" + Q2="What about CSE?"
+    # -> effective_question = "What is the minimum attendance required for CSE at GCET?"
+    current_branches = words.intersection(BRANCH_MODIFIERS)
+    if current_branches:
+        branch_str = list(current_branches)[0].upper()
+        if branch_str.lower() not in last_user_q.lower():
+            if "at gcet" in last_user_q.lower():
+                effective_q = re.sub(r"(?i)\bat gcet\b", f"for {branch_str} at GCET", last_user_q)
+            else:
+                effective_q = f"{last_user_q.rstrip('?')} for {branch_str}?"
+            return effective_q, True
 
-        current_branches = words.intersection(BRANCH_MODIFIERS)
-        active_branch = ""
-        if current_branches:
-            active_branch = list(current_branches)[0].upper()
-        else:
-            for uq in reversed(history_window):
-                uq_branches = set(re.findall(r"\b\w+\b", uq.lower())).intersection(BRANCH_MODIFIERS)
-                if uq_branches:
-                    active_branch = list(uq_branches)[0].upper()
-                    break
+    # Handle pronoun follow-up: e.g. Q1="What is deep learning?" + Q2="What are its applications?"
+    # -> effective_question = "What are the applications of deep learning?"
+    if "its applications" in q_lower or "their applications" in q_lower:
+        topic_match = re.sub(r"(?i)^\s*what\s+is\s+", "", last_user_q).rstrip("?")
+        return f"What are the applications of {topic_match}?", True
 
-        if active_branch and active_branch.lower() not in root_question.lower():
-            concise_query = f"{root_question} {active_branch} {q_clean}"
-        else:
-            concise_query = f"{root_question} {q_clean}"
+    if "how much is it" in q_lower or "how much is that" in q_lower:
+        return last_user_q, True
 
-        return concise_query, True
-    else:
-        # --- GENERAL KNOWLEDGE FOLLOW-UP CONTEXT ---
-        concise_query = f"{last_user_q} {q_clean}"
-        return concise_query, True
+    effective_q = f"{last_user_q} ({q_clean})"
+    return effective_q, True
