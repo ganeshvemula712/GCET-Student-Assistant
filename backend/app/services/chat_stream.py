@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.models.conversation import Conversation
 from backend.app.models.user import User
-from backend.app.services.memory import get_conversation_history
+from backend.app.services.memory import get_conversation_history, build_contextual_search_query
 from backend.app.services.message import save_message
 from backend.app.services.rag import (
     generate_general_answer_stream,
@@ -21,7 +21,8 @@ RELEVANCE_THRESHOLD = 1.15
 
 GCET_KEYWORDS = (
     "gcet", "r22", "ar22", "r20", "attendance", "condonation", "credit", "credits",
-    "placement", "placements", "campus", "fee", "fees", "detained", "promotion",
+    "placement", "placements", "campus", "fee", "fees", "donation", "donations",
+    "admission", "admissions", "detained", "promotion",
     "sgpa", "cgpa", "regulation", "regulations", "autonomous", "geethanjali",
     "syllabus", "curriculum", "sem", "semester", "mid", "lab", "internship", "hostel"
 )
@@ -116,20 +117,26 @@ async def stream_chat(
             db.commit()
             db.refresh(conversation)
 
-        # 2. Fetch Conversation History
+        # 2. Fetch Conversation History & Build Contextual Search Query
         history = get_conversation_history(
             conversation_id=conversation_id,
             db=db,
         )
 
-        # 3. Retrieve candidate RAG chunks from ChromaDB
+        search_query, is_followup = build_contextual_search_query(
+            question=question,
+            db=db,
+            conversation_id=conversation_id,
+        )
+
+        # 3. Retrieve candidate RAG chunks from ChromaDB using standalone query
         t_retrieval_start = time.perf_counter()
         retrieved = retrieve_relevant_chunks(
-            question=question,
+            question=search_query,
             n_results=4,
         )
         t_retrieval_end = time.perf_counter()
-        print(f"[CHAT] RAG retrieval completed: {(t_retrieval_end - t_retrieval_start)*1000:.1f} ms (Found {len(retrieved)} candidate chunks)")
+        print(f"[CHAT] RAG retrieval completed: {(t_retrieval_end - t_retrieval_start)*1000:.1f} ms (Found {len(retrieved)} candidate chunks for query='{search_query[:60]}...')")
 
         # 4. Evaluate relevance & intent routing
         relevant = [
@@ -139,7 +146,8 @@ async def stream_chat(
         ]
 
         q_lower = question.lower().strip()
-        is_explicit_gcet = any(kw in q_lower for kw in GCET_KEYWORDS)
+        sq_lower = search_query.lower().strip()
+        is_explicit_gcet = any(kw in sq_lower for kw in GCET_KEYWORDS)
         is_general_concept = any(
             phrase in q_lower for phrase in [
                 "what is ai", "what is deep learning", "what is python",

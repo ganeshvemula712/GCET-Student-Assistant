@@ -91,13 +91,13 @@ export default function MarkdownRenderer({ content }) {
             );
           },
           p({ children }) {
-            return <p className="mb-3 text-base leading-relaxed text-gray-200">{children}</p>;
+            return <p className="mb-2 text-base leading-relaxed text-gray-200">{children}</p>;
           },
           ul({ children }) {
-            return <ul className="my-3 ml-5 list-disc list-outside space-y-1.5 text-base leading-relaxed text-gray-200">{children}</ul>;
+            return <ul className="my-2 ml-5 list-disc list-outside space-y-1 text-base leading-relaxed text-gray-200">{children}</ul>;
           },
           ol({ children }) {
-            return <ol className="my-3 ml-5 list-decimal list-outside space-y-1.5 text-base leading-relaxed text-gray-200">{children}</ol>;
+            return <ol className="my-2 ml-5 list-decimal list-outside space-y-1 text-base leading-relaxed text-gray-200">{children}</ol>;
           },
           li({ children }) {
             return <li className="pl-1 leading-relaxed">{children}</li>;

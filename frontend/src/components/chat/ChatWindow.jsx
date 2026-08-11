@@ -220,7 +220,7 @@ export default function ChatWindow({
         totalMessages={conversationStats.totalMessages}
       />
 
-      <div ref={containerRef} className="flex-1 overflow-y-auto px-4 py-6 sm:px-8 relative">
+      <div ref={containerRef} className="flex-1 overflow-y-auto px-4 py-3 sm:px-8 sm:py-4 relative">
         {isLoading && activeConvId ? (
           <ChatSkeletonLoader />
         ) : isNewChatState || !data?.messages?.length ? (
@@ -285,20 +285,6 @@ export default function ChatWindow({
           <span>Jump to latest</span>
         </button>
       )}
-
-      {/* Metadata strip */}
-      <div className="border-t border-gray-800/80 bg-gray-950/90 px-4 py-1 text-[11px] text-gray-400">
-        <div className="flex flex-wrap items-center justify-between gap-3 max-w-6xl mx-auto">
-          <div className="flex items-center gap-3">
-            <span>Messages: <strong className="text-white">{conversationStats.totalMessages}</strong></span>
-            <span>Ground Sources: <strong className="text-emerald-400">{conversationStats.retrievedDocuments}</strong></span>
-            <span>Avg Confidence: <strong className="text-cyan-400">{conversationStats.averageConfidence}%</strong></span>
-          </div>
-          <span className="hidden md:inline">
-            Engine: <strong className="text-gray-300">Gemini 2.5 Flash + ChromaDB</strong>
-          </span>
-        </div>
-      </div>
 
       {/* Message Composer */}
       <div className="sticky bottom-0 z-10 bg-[#0B1020]">

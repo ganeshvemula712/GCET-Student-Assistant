@@ -70,7 +70,7 @@ function MessageBubble({
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2 }}
-        className={`mb-6 flex ${isUser ? "justify-end" : "justify-start"}`}
+        className={`mb-4 flex ${isUser ? "justify-end" : "justify-start"}`}
       >
         {isUser ? (
           <div className="group flex max-w-5xl items-start gap-3">
@@ -105,7 +105,7 @@ function MessageBubble({
                   </button>
                 )}
               </div>
-              <div className="rounded-2xl rounded-tr-none bg-gradient-to-r from-emerald-600 to-teal-600 px-5 py-3.5 text-base font-medium text-white shadow-lg">
+              <div className="rounded-2xl rounded-tr-none bg-gradient-to-r from-emerald-600 to-teal-600 px-4.5 py-3 text-base font-medium text-white shadow-lg">
                 <p className="whitespace-pre-wrap leading-relaxed">{content}</p>
               </div>
               <span className="mt-1 text-[10px] text-gray-500">{formatTimestamp(message?.created_at)}</span>
@@ -116,24 +116,26 @@ function MessageBubble({
           </div>
         ) : (
           <div className="w-full max-w-6xl">
-            <div className="mb-2 flex items-center gap-2.5">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-500 text-gray-950 shadow-md">
-                <GraduationCap size={20} />
-              </div>
-              <div>
-                <h4 className="text-xs font-bold text-white">GCET AI Assistant</h4>
-                <p className="text-[10px] text-gray-400">
-                  {normalizedSources.length > 0 ? "RAG Knowledge Engine" : "General Knowledge AI"}
-                </p>
-              </div>
-            </div>
+            <div className="rounded-3xl border border-gray-800 bg-[#111827] p-4 sm:p-5 shadow-xl backdrop-blur-sm">
+              <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2 border-b border-gray-800/80 pb-2.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 text-gray-950 shadow-md">
+                    <GraduationCap size={18} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white">GCET AI Assistant</h4>
+                    <p className="text-[10px] text-gray-400">
+                      {normalizedSources.length > 0 ? "RAG Knowledge Engine" : "General Knowledge AI"}
+                    </p>
+                  </div>
+                </div>
 
-            <div className="rounded-3xl border border-gray-800 bg-[#111827] p-6 shadow-xl backdrop-blur-sm">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-gray-800/80 pb-3">
-                <ConfidenceBadge score={confidence ?? 0} sourcesCount={normalizedSources.length} />
-                <span className="text-[11px] font-medium text-gray-400">
-                  {normalizedSources.length > 0 ? `${normalizedSources.length} Grounded Sources` : "General Knowledge"}
-                </span>
+                <div className="flex items-center gap-2">
+                  <ConfidenceBadge score={confidence ?? 0} sourcesCount={normalizedSources.length} />
+                  <span className="text-[11px] font-medium text-gray-400">
+                    {normalizedSources.length > 0 ? `${normalizedSources.length} Grounded Sources` : "General Knowledge"}
+                  </span>
+                </div>
               </div>
 
               <MarkdownRenderer content={content} />

@@ -168,7 +168,7 @@ export default function ChatInput({
   }
 
   return (
-    <div className="border-t border-white/10 bg-[#020817] px-6 py-4">
+    <div className="border-t border-white/10 bg-[#020817] px-4 py-2.5 sm:px-6">
       <div className="max-w-6xl mx-auto space-y-3">
         {editingMessage && (
           <div className="mb-4 flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
