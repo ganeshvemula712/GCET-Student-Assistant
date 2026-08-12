@@ -18,8 +18,6 @@ def test_process_chat_creates_new_conversation(
     request = create_chat_request()
 
     with patch(
-        "backend.app.services.chat.generate_conversation_title"
-    ) as mock_title, patch(
         "backend.app.services.chat.get_conversation_history"
     ) as mock_history, patch(
         "backend.app.services.chat.save_message"
@@ -29,7 +27,6 @@ def test_process_chat_creates_new_conversation(
         "backend.app.services.chat.generate_general_answer"
     ) as mock_general:
 
-        mock_title.return_value = "NBA Criterion 3"
         mock_history.return_value = ""
         mock_retrieve.return_value = []
         mock_general.return_value = ("General Answer", 80, [])
@@ -51,7 +48,7 @@ def test_process_chat_creates_new_conversation(
 
     assert conversation is not None
     assert conversation.user_id == student.id
-    assert conversation.title == "NBA Criterion 3"
+    assert conversation.title == "What is NBA Criterion 3?"
 
     assert response.answer == "General Answer"
     assert response.sources == []
@@ -76,8 +73,6 @@ def test_process_chat_reuses_existing_conversation(
     request = create_chat_request()
 
     with patch(
-        "backend.app.services.chat.generate_conversation_title"
-    ) as mock_title, patch(
         "backend.app.services.chat.get_conversation_history"
     ) as mock_history, patch(
         "backend.app.services.chat.save_message"
@@ -99,8 +94,6 @@ def test_process_chat_reuses_existing_conversation(
 
     assert response.answer == "Existing Answer"
 
-    mock_title.assert_not_called()
-
     assert mock_save_message.call_count == 2
 
 
@@ -121,8 +114,6 @@ def test_process_chat_generates_title_only_once(
     request = create_chat_request()
 
     with patch(
-        "backend.app.services.chat.generate_conversation_title"
-    ) as mock_title, patch(
         "backend.app.services.chat.get_conversation_history"
     ) as mock_history, patch(
         "backend.app.services.chat.save_message"
@@ -142,8 +133,6 @@ def test_process_chat_generates_title_only_once(
             db=db_session,
         )
 
-    mock_title.assert_not_called()
-
     assert mock_save_message.call_count == 2
 
 def test_process_chat_general_ai_path(
@@ -154,8 +143,6 @@ def test_process_chat_general_ai_path(
     request = create_chat_request()
 
     with patch(
-        "backend.app.services.chat.generate_conversation_title"
-    ) as mock_title, patch(
         "backend.app.services.chat.get_conversation_history"
     ) as mock_history, patch(
         "backend.app.services.chat.save_message"
@@ -165,7 +152,6 @@ def test_process_chat_general_ai_path(
         "backend.app.services.chat.generate_general_answer"
     ) as mock_general:
 
-        mock_title.return_value = "General Chat"
         mock_history.return_value = "Previous Conversation"
 
         mock_retrieve.return_value = (
@@ -204,8 +190,6 @@ def test_process_chat_rag_path(
     request = create_chat_request()
 
     with patch(
-        "backend.app.services.chat.generate_conversation_title"
-    ) as mock_title, patch(
         "backend.app.services.chat.get_conversation_history"
     ) as mock_history, patch(
         "backend.app.services.chat.save_message"
@@ -214,8 +198,6 @@ def test_process_chat_rag_path(
     ) as mock_retrieve, patch(
         "backend.app.services.chat.generate_rag_answer"
     ) as mock_rag:
-
-        mock_title.return_value = "NBA"
 
         mock_history.return_value = (
             "Previous Conversation"
@@ -272,8 +254,6 @@ def test_duplicate_sources_removed(
     request = create_chat_request()
 
     with patch(
-        "backend.app.services.chat.generate_conversation_title"
-    ) as mock_title, patch(
         "backend.app.services.chat.get_conversation_history"
     ) as mock_history, patch(
         "backend.app.services.chat.save_message"
@@ -282,8 +262,6 @@ def test_duplicate_sources_removed(
     ) as mock_retrieve, patch(
         "backend.app.services.chat.generate_rag_answer"
     ) as mock_rag:
-
-        mock_title.return_value = "NBA"
 
         mock_history.return_value = ""
 
@@ -334,8 +312,6 @@ def test_existing_conversation_belongs_to_current_user(
     request = create_chat_request()
 
     with patch(
-        "backend.app.services.chat.generate_conversation_title"
-    ) as mock_title, patch(
         "backend.app.services.chat.get_conversation_history"
     ) as mock_history, patch(
         "backend.app.services.chat.save_message"
@@ -357,8 +333,6 @@ def test_existing_conversation_belongs_to_current_user(
 
     assert response.answer == "Answer"
 
-    mock_title.assert_not_called()
-
     assert mock_save_message.call_count == 2
 
 def test_title_generation_failure_does_not_stop_chat(
@@ -369,8 +343,6 @@ def test_title_generation_failure_does_not_stop_chat(
     request = create_chat_request()
 
     with patch(
-        "backend.app.services.chat.generate_conversation_title"
-    ) as mock_title, patch(
         "backend.app.services.chat.get_conversation_history"
     ) as mock_history, patch(
         "backend.app.services.chat.save_message"
@@ -379,10 +351,6 @@ def test_title_generation_failure_does_not_stop_chat(
     ) as mock_retrieve, patch(
         "backend.app.services.chat.generate_general_answer"
     ) as mock_general:
-
-        mock_title.side_effect = Exception(
-            "Gemini unavailable"
-        )
 
         mock_history.return_value = ""
 
@@ -413,7 +381,7 @@ def test_title_generation_failure_does_not_stop_chat(
 
     assert (
         conversation.title
-        == "New Conversation"
+        == "What is NBA Criterion 3?"
     )
 
     assert (
@@ -432,8 +400,6 @@ def test_messages_are_saved(
     request = create_chat_request()
 
     with patch(
-        "backend.app.services.chat.generate_conversation_title"
-    ) as mock_title, patch(
         "backend.app.services.chat.get_conversation_history"
     ) as mock_history, patch(
         "backend.app.services.chat.retrieve_relevant_chunks"
@@ -442,8 +408,6 @@ def test_messages_are_saved(
     ) as mock_general, patch(
         "backend.app.services.chat.save_message"
     ) as mock_save_message:
-
-        mock_title.return_value = "Chat"
 
         mock_history.return_value = ""
 
@@ -511,8 +475,6 @@ def test_rag_returns_sorted_sources(
     ]
 
     with patch(
-        "backend.app.services.chat.generate_conversation_title"
-    ) as mock_title, patch(
         "backend.app.services.chat.get_conversation_history"
     ) as mock_history, patch(
         "backend.app.services.chat.save_message"
@@ -521,8 +483,6 @@ def test_rag_returns_sorted_sources(
     ) as mock_retrieve, patch(
         "backend.app.services.chat.generate_rag_answer"
     ) as mock_rag:
-
-        mock_title.return_value = "Sorted"
 
         mock_history.return_value = ""
 

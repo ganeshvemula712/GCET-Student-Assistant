@@ -44,7 +44,8 @@ GCET_ACADEMIC_TOPICS = {
     "syllabus", "curriculum", "placement", "placements"
 }
 
-BRANCH_MODIFIERS = {"cse", "ece", "eee", "mech", "civil", "ds", "aiml", "it", "csd", "csm"}
+UNAMBIGUOUS_BRANCHES = {"cse", "ece", "eee", "mech", "civil", "ds", "aiml", "csd", "csm"}
+BRANCH_MODIFIERS = UNAMBIGUOUS_BRANCHES | {"it"}
 
 ANAPHORA_PRONOUNS = {"its", "it", "this", "that", "these", "those", "same", "above", "former", "latter", "which"}
 
@@ -68,6 +69,34 @@ GENERAL_CONCEPT_PATTERNS = [
     r"\b(binary search|bubble sort|linked list)\b",
     r"\b(what is machine learning|what is ai|what is deep learning|what is python)\b"
 ]
+
+
+def extract_branch_modifier(question: str) -> str | None:
+    """
+    Extracts explicit academic branch modifier from question if present.
+    Distinguishes the English pronoun 'it' from Information Technology 'IT'.
+    """
+    q_clean = question.strip()
+    q_lower = q_clean.lower()
+    words = set(re.findall(r"\b\w+\b", q_lower))
+
+    # 1. Check unambiguous branch acronyms (CSE, ECE, EEE, MECH, CIVIL, DS, AIML, CSD, CSM)
+    found_unambiguous = words.intersection(UNAMBIGUOUS_BRANCHES)
+    if found_unambiguous:
+        return list(sorted(found_unambiguous))[0].upper()
+
+    # 2. Check for Information Technology (IT) branch:
+    # Requires uppercase 'IT', explicit branch/dept keywords, or explicit branch phrasing ('for IT', 'and for IT')
+    if "it" in words:
+        is_uppercase_it = bool(re.search(r"\bIT\b", q_clean))
+        has_branch_keyword = bool(re.search(r"\b(it\s+(branch|dept|department|course|stream)|(branch|dept|department|stream)\s+of\s+it)\b", q_lower))
+        is_explicit_branch_phrase = bool(re.search(r"^\s*(what\s+about|how\s+about|and\s+for|for)\s+(the\s+)?IT\b", q_clean, re.IGNORECASE))
+        is_generic_pronoun_phrase = bool(re.search(r"^\s*(what\s+about|how\s+about|how\s+much\s+is|is\s+it|does\s+it|can\s+it)\s+it\b", q_lower))
+
+        if (is_uppercase_it or has_branch_keyword or is_explicit_branch_phrase) and not (is_generic_pronoun_phrase and not is_uppercase_it and not has_branch_keyword):
+            return "IT"
+
+    return None
 
 
 def build_contextual_search_query(
@@ -107,7 +136,8 @@ def build_contextual_search_query(
         return q_clean, False
 
     # 4. Determine if current question is a follow-up
-    is_short_branch = len(words) <= 5 and bool(words.intersection(BRANCH_MODIFIERS))
+    detected_branch = extract_branch_modifier(q_clean)
+    is_short_branch = len(words) <= 5 and bool(detected_branch)
     is_followup = is_short_branch or has_anaphora or has_followup_pattern or (has_followup_prefix and len(words) <= 7)
 
     if not is_followup:
@@ -138,9 +168,8 @@ def build_contextual_search_query(
     # Construct effective question:
     # Handle branch follow-up: e.g. Q1="What is the minimum attendance required at GCET?" + Q2="What about CSE?"
     # -> effective_question = "What is the minimum attendance required for CSE at GCET?"
-    current_branches = words.intersection(BRANCH_MODIFIERS)
-    if current_branches:
-        branch_str = list(current_branches)[0].upper()
+    if detected_branch:
+        branch_str = detected_branch
         if branch_str.lower() not in last_user_q.lower():
             if "at gcet" in last_user_q.lower():
                 effective_q = re.sub(r"(?i)\bat gcet\b", f"for {branch_str} at GCET", last_user_q)
@@ -154,7 +183,7 @@ def build_contextual_search_query(
         topic_match = re.sub(r"(?i)^\s*what\s+is\s+", "", last_user_q).rstrip("?")
         return f"What are the applications of {topic_match}?", True
 
-    if "how much is it" in q_lower or "how much is that" in q_lower:
+    if "how much is it" in q_lower or "how much is that" in q_lower or "is it mandatory" in q_lower:
         return last_user_q, True
 
     effective_q = f"{last_user_q} ({q_clean})"

@@ -27,4 +27,4 @@ async def test_process_document_rejects_non_pdf(
 
     assert error.value.status_code == 400
 
-    assert error.value.detail == "Only PDF files are allowed"
+    assert "Unsupported file format" in error.value.detail

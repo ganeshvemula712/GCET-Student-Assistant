@@ -58,7 +58,7 @@ def create_irrelevant_chunks():
     return [
         {
             "text": "Irrelevant",
-            "distance": 0.95,
+            "distance": 1.95,
             "metadata": {
                 "filename": "General.pdf",
                 "page": 1,

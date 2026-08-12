@@ -66,8 +66,10 @@ def test_edit_message_route_calls_regeneration(
     db_session.commit()
     db_session.refresh(message)
 
-    with patch("backend.app.routers.messages.regenerate_message") as mock_regenerate:
-        mock_regenerate.return_value = {"success": True}
+    with patch(
+        "backend.app.routers.messages.update_user_message_and_truncate_history"
+    ) as mock_update:
+        mock_update.return_value = ("edit-test-123", "Updated question")
 
         response = client.patch(
             f"/messages/{message.id}",
@@ -76,7 +78,7 @@ def test_edit_message_route_calls_regeneration(
 
     assert response.status_code == 200
     assert response.json()["message"] == "Message updated successfully"
-    mock_regenerate.assert_called_once()
+    mock_update.assert_called_once()
 
 
 def test_rename_conversation(
