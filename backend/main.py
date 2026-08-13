@@ -33,6 +33,7 @@ from backend.app.routers.dashboard import router as dashboard_router
 from backend.app.routers.messages import router as messages_router
 
 from backend.app.services.health import run_startup_checks
+from backend.app.services.admin_bootstrap import run_admin_bootstrap
 
 Base.metadata.create_all(bind=engine)
 
@@ -40,6 +41,7 @@ Base.metadata.create_all(bind=engine)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     run_startup_checks()
+    run_admin_bootstrap()
     yield
 
 
