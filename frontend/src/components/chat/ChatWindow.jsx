@@ -213,14 +213,14 @@ export default function ChatWindow({
   }, [data, activeConvId, chatMutation, createController, clearController]);
 
   return (
-    <div className="flex h-full flex-1 flex-col bg-[#0B1020] relative">
+    <div className="flex h-full min-h-0 flex-1 flex-col bg-[#0B1020] relative">
       <ChatHeader
         onToggleSidebar={onToggleSidebar}
         onNewChat={onNewChat}
         totalMessages={conversationStats.totalMessages}
       />
 
-      <div ref={containerRef} className="flex-1 overflow-y-auto px-4 py-3 sm:px-8 sm:py-4 relative">
+      <div ref={containerRef} className="flex-1 min-h-0 overflow-y-auto px-3 py-3 sm:px-8 sm:py-4 relative">
         {isLoading && activeConvId ? (
           <ChatSkeletonLoader />
         ) : isNewChatState || !data?.messages?.length ? (

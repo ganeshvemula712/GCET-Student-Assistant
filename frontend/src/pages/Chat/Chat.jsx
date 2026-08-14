@@ -41,7 +41,7 @@ export default function Chat() {
   }, []);
 
   return (
-    <div className="flex h-full flex-1 min-h-0 w-full overflow-hidden rounded-3xl border border-gray-800 bg-[#0B1120] shadow-2xl relative select-none">
+    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden rounded-xl md:rounded-3xl border border-gray-800 bg-[#0B1120] shadow-2xl relative select-none">
       {/* Mobile Overlay */}
       <div
         className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity md:hidden ${

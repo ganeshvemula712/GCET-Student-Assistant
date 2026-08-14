@@ -184,7 +184,7 @@ export default function ChatInput({
         )}
 
         <form onSubmit={handleSubmit}>
-          <div className="flex items-end gap-3 rounded-3xl border border-white/10 bg-slate-900 p-3">
+          <div className="flex items-end gap-2 sm:gap-3 rounded-2xl sm:rounded-3xl border border-white/10 bg-slate-900 p-2 sm:p-3">
             <textarea
               ref={textareaRef}
               rows={1}
@@ -195,25 +195,26 @@ export default function ChatInput({
               onCompositionStart={() => setIsComposing(true)}
               onCompositionEnd={() => setIsComposing(false)}
               placeholder={editingMessage ? "Edit your question..." : "Ask anything about GCET..."}
-              className="flex-1 resize-none bg-transparent px-3 py-2 text-white outline-none disabled:cursor-not-allowed disabled:opacity-70"
+              className="flex-1 resize-none bg-transparent px-2 py-1.5 sm:px-3 sm:py-2 text-sm sm:text-base text-white outline-none placeholder:text-gray-400 disabled:cursor-not-allowed disabled:opacity-70"
             />
 
             {isGenerating ? (
               <button
                 type="button"
                 onClick={handleStopGeneration}
-                className="flex min-w-[110px] items-center justify-center gap-2 rounded-full bg-amber-500 px-4 py-3 font-medium text-slate-950 transition hover:bg-amber-400 cursor-pointer"
+                className="flex min-w-[90px] sm:min-w-[110px] items-center justify-center gap-1.5 sm:gap-2 rounded-full bg-amber-500 px-3 py-2.5 sm:px-4 sm:py-3 text-xs sm:text-sm font-semibold text-slate-950 transition hover:bg-amber-400 cursor-pointer"
               >
-                <CircleNotch size={18} className="animate-spin" />
+                <CircleNotch size={16} className="animate-spin shrink-0" />
                 <span>Stop</span>
               </button>
             ) : (
               <button
                 type="submit"
                 disabled={!question.trim()}
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                aria-label="Send message"
+                className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-full bg-blue-600 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer shrink-0"
               >
-                <ArrowUp size={20} weight="bold" />
+                <ArrowUp size={18} weight="bold" />
               </button>
             )}
           </div>
