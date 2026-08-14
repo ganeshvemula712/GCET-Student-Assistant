@@ -14,15 +14,48 @@ from backend.app.services.retrieval import (
     retrieve_relevant_chunks,
 )
 
+import re
+
 RELEVANCE_THRESHOLD = 1.25
 
-GCET_KEYWORDS = (
-    "gcet", "r22", "ar22", "r20", "attendance", "condonation", "credit", "credits",
-    "placement", "placements", "campus", "fee", "fees", "donation", "donations",
-    "admission", "admissions", "detained", "promotion",
-    "sgpa", "cgpa", "regulation", "regulations", "autonomous", "geethanjali",
-    "syllabus", "curriculum", "sem", "semester", "mid", "lab", "internship", "hostel"
+EXPLICIT_GCET_KEYWORDS = (
+    "gcet", "geethanjali", "r22", "ar22", "r20", "r18", "r16",
+    "attendance", "condonation", "credit", "credits",
+    "placement", "placements", "recruitment", "recruiter", "recruiters",
+    "sgpa", "cgpa", "syllabus", "curriculum", "sem", "semester", "mid", "mids",
+    "examination", "examinations", "hostel", "principal", "hod", "detained", "promotion",
+    "lpa", "ctc",
+    "highest package", "average package", "lowest package", "package offered", "salary package",
+    "highest salary", "average salary", "salary offered",
+    "graduating batch", "graduates", "placement drive", "campus drive", "recruitment drive",
+    "companies visited", "visited for placements", "company offered",
+    "academic regulations", "gcet regulations", "college regulations", "academic rules"
 )
+
+
+def is_explicit_gcet_query(text: str) -> bool:
+    t_lower = text.lower().strip()
+    return any(re.search(r'\b' + re.escape(kw) + r'\b', t_lower) for kw in EXPLICIT_GCET_KEYWORDS)
+
+
+def is_pure_general_concept(text: str) -> bool:
+    t_lower = text.lower().strip()
+    greetings = {"hello", "hi", "hey", "hloo", "hollo", "greetings", "good morning", "good afternoon", "good evening"}
+    if t_lower in greetings:
+        return True
+
+    if "in general" in t_lower:
+        return True
+
+    general_phrases = [
+        "what is ai", "what is deep learning", "what is python",
+        "what is rag", "what is machine learning", "what is neural network", "what is a neural network",
+        "explain ai", "explain deep learning", "explain python",
+        "explain machine learning", "explain neural network", "explain rag",
+        "what does sql mean", "what is sql", "what is java", "what is c++",
+        "what is a company", "what is a salary"
+    ]
+    return any(phrase in t_lower for phrase in general_phrases)
 
 
 def process_chat(
@@ -78,14 +111,8 @@ def process_chat(
 
     # 3. Intent Pre-Check & Vector Retrieval
     q_lower = request.question.lower().strip()
-    is_explicit_gcet = any(kw in q_lower for kw in GCET_KEYWORDS)
-    is_general_concept = any(
-        phrase in q_lower for phrase in [
-            "what is ai", "what is deep learning", "what is python",
-            "what is rag", "what is machine learning", "what is neural network",
-            "explain ai", "explain deep learning", "hello", "hi", "hey", "hloo", "greetings"
-        ]
-    )
+    is_explicit_gcet = is_explicit_gcet_query(q_lower)
+    is_general_concept = is_pure_general_concept(q_lower)
 
     bypass_retrieval = is_general_concept and not is_explicit_gcet
 
@@ -124,8 +151,26 @@ def process_chat(
         if chunk.get("distance", 2.0) <= RELEVANCE_THRESHOLD
     ]
 
-    # 4. General AI fallback
+    # 4. Routing Decision
     if not relevant_chunks:
+        if is_explicit_gcet:
+            kb_unavailable_msg = "The requested information is not available in the current GCET Knowledge Base."
+            save_message(
+                db=db,
+                conversation_id=request.conversation_id,
+                role="assistant",
+                content=kb_unavailable_msg,
+                sources=[],
+                confidence=0,
+                follow_up_questions=["Please try asking your question again in a minute."],
+            )
+            return ChatResponse(
+                answer=kb_unavailable_msg,
+                sources=[],
+                confidence=0,
+                follow_up_questions=["Please try asking your question again in a minute."],
+            )
+
         general_prompt = f"""
 =========================
 Conversation History

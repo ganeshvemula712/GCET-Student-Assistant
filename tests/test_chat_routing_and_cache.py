@@ -1,6 +1,5 @@
 from unittest.mock import MagicMock, patch
 import pytest
-from google.genai.errors import APIError
 
 from backend.app.schemas.chat import ChatRequest
 from backend.app.services.embeddings import generate_embeddings, generate_query_embedding, _cached_query_embedding
@@ -62,8 +61,20 @@ def test_document_ingestion_does_not_use_query_cache():
         assert mock_embed.call_count == 2
 
 
-def test_general_question_bypasses_vector_retrieval(db_session, student):
-    request = ChatRequest(conversation_id="conv-123", question="What is Python?")
+@pytest.mark.parametrize("general_query", [
+    "What is Python?",
+    "Explain machine learning",
+    "What is a neural network?",
+    "Hello",
+    "What is a package in Java?",
+    "What is a batch in machine learning?",
+    "What is a drive in computer systems?",
+    "What is a company?",
+    "What is a salary?",
+    "What are regulations in general?"
+])
+def test_general_questions_bypass_or_fallback_to_general_knowledge(db_session, student, general_query):
+    request = ChatRequest(conversation_id="conv-123", question=general_query)
 
     with patch("backend.app.services.chat.get_conversation_history") as mock_history, \
          patch("backend.app.services.chat.save_message") as mock_save_message, \
@@ -71,17 +82,30 @@ def test_general_question_bypasses_vector_retrieval(db_session, student):
          patch("backend.app.services.chat.generate_general_answer") as mock_general:
 
         mock_history.return_value = ""
-        mock_general.return_value = ("Python is a high-level programming language.", 85, [])
+        mock_retrieve.return_value = [] # No GCET document chunks match generic technical query
+        mock_general.return_value = ("General Knowledge Answer", 85, [])
 
         response = process_chat(request=request, current_user=student, db=db_session)
 
-        assert response.answer == "Python is a high-level programming language."
-        # Retrieval MUST be bypassed completely
-        mock_retrieve.assert_not_called()
+        assert response.answer == "General Knowledge Answer"
 
 
-def test_gcet_question_executes_retrieval(db_session, student):
-    request = ChatRequest(conversation_id="conv-123", question="What is the minimum attendance at GCET?")
+@pytest.mark.parametrize("gcet_query", [
+    "What is the minimum attendance at GCET?",
+    "What are GCET academic regulations?",
+    "What is the syllabus for Data Science?",
+    "When are IV year semester exams?",
+    "Who got the highest salary among 2026 graduates?",
+    "What was the highest package offered?",
+    "Which company offered the highest package?",
+    "Which companies visited GCET for placements?",
+    "What are the placement statistics for 2026?",
+    "What is the highest package at GCET?",
+    "Which company offered the highest package to GCET students?",
+    "What are the academic regulations at GCET?"
+])
+def test_gcet_questions_execute_retrieval(db_session, student, gcet_query):
+    request = ChatRequest(conversation_id="conv-123", question=gcet_query)
 
     with patch("backend.app.services.chat.get_conversation_history") as mock_history, \
          patch("backend.app.services.chat.save_message") as mock_save_message, \
@@ -90,12 +114,29 @@ def test_gcet_question_executes_retrieval(db_session, student):
 
         mock_history.return_value = ""
         mock_retrieve.return_value = create_rag_chunks()
-        mock_rag.return_value = ("Minimum attendance requirement is 75%.", 90, [])
+        mock_rag.return_value = ("Grounded RAG Answer", 90, [])
 
         response = process_chat(request=request, current_user=student, db=db_session)
 
-        assert response.answer == "Minimum attendance requirement is 75%."
+        assert response.answer == "Grounded RAG Answer"
         mock_retrieve.assert_called_once()
+
+
+def test_strict_grounding_gcet_query_no_chunks_returns_kb_notice(db_session, student):
+    request = ChatRequest(conversation_id="conv-123", question="Who got the highest salary among 2026 graduates?")
+
+    with patch("backend.app.services.chat.get_conversation_history") as mock_history, \
+         patch("backend.app.services.chat.save_message") as mock_save_message, \
+         patch("backend.app.services.chat.retrieve_relevant_chunks") as mock_retrieve, \
+         patch("backend.app.services.chat.generate_general_answer") as mock_general:
+
+        mock_history.return_value = ""
+        mock_retrieve.return_value = [] # No matching placement chunks in DB
+
+        response = process_chat(request=request, current_user=student, db=db_session)
+
+        assert response.answer == "The requested information is not available in the current GCET Knowledge Base."
+        mock_general.assert_not_called()
 
 
 def test_gcet_question_retrieval_429_fails_fast_without_general_ai(db_session, student):
@@ -112,5 +153,4 @@ def test_gcet_question_retrieval_429_fails_fast_without_general_ai(db_session, s
         response = process_chat(request=request, current_user=student, db=db_session)
 
         assert "temporarily unavailable" in response.answer.lower()
-        # General AI LLM must NOT be called for ungrounded GCET question!
         mock_general.assert_not_called()

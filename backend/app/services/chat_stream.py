@@ -20,15 +20,48 @@ from backend.app.services.retrieval import (
 )
 from backend.app.services.title_generator import generate_title_from_message
 
+import re
+
 RELEVANCE_THRESHOLD = 1.15
 
-GCET_KEYWORDS = (
-    "gcet", "r22", "ar22", "r20", "attendance", "condonation", "credit", "credits",
-    "placement", "placements", "campus", "fee", "fees", "donation", "donations",
-    "admission", "admissions", "detained", "promotion",
-    "sgpa", "cgpa", "regulation", "regulations", "autonomous", "geethanjali",
-    "syllabus", "curriculum", "sem", "semester", "mid", "lab", "internship", "hostel"
+EXPLICIT_GCET_KEYWORDS = (
+    "gcet", "geethanjali", "r22", "ar22", "r20", "r18", "r16",
+    "attendance", "condonation", "credit", "credits",
+    "placement", "placements", "recruitment", "recruiter", "recruiters",
+    "sgpa", "cgpa", "syllabus", "curriculum", "sem", "semester", "mid", "mids",
+    "examination", "examinations", "hostel", "principal", "hod", "detained", "promotion",
+    "lpa", "ctc",
+    "highest package", "average package", "lowest package", "package offered", "salary package",
+    "highest salary", "average salary", "salary offered",
+    "graduating batch", "graduates", "placement drive", "campus drive", "recruitment drive",
+    "companies visited", "visited for placements", "company offered",
+    "academic regulations", "gcet regulations", "college regulations", "academic rules"
 )
+
+
+def is_explicit_gcet_query(text: str) -> bool:
+    t_lower = text.lower().strip()
+    return any(re.search(r'\b' + re.escape(kw) + r'\b', t_lower) for kw in EXPLICIT_GCET_KEYWORDS)
+
+
+def is_pure_general_concept(text: str) -> bool:
+    t_lower = text.lower().strip()
+    greetings = {"hello", "hi", "hey", "hloo", "hollo", "greetings", "good morning", "good afternoon", "good evening"}
+    if t_lower in greetings:
+        return True
+
+    if "in general" in t_lower:
+        return True
+
+    general_phrases = [
+        "what is ai", "what is deep learning", "what is python",
+        "what is rag", "what is machine learning", "what is neural network", "what is a neural network",
+        "explain ai", "explain deep learning", "explain python",
+        "explain machine learning", "explain neural network", "explain rag",
+        "what does sql mean", "what is sql", "what is java", "what is c++",
+        "what is a company", "what is a salary"
+    ]
+    return any(phrase in t_lower for phrase in general_phrases)
 
 
 def _generate_fallback_general_response(question: str) -> str:
@@ -135,7 +168,7 @@ async def stream_chat(
         # 3. Intent Pre-Check & Vector Retrieval
         q_lower = question.lower().strip()
         sq_lower = search_query.lower().strip()
-        is_explicit_gcet = any(kw in sq_lower for kw in GCET_KEYWORDS)
+        is_explicit_gcet = any(kw in sq_lower for kw in GCET_KEYWORDS) or any(kw in q_lower for kw in GCET_KEYWORDS)
         is_general_concept = any(
             phrase in q_lower for phrase in [
                 "what is ai", "what is deep learning", "what is python",
@@ -268,8 +301,15 @@ async def stream_chat(
             ]
             avg_dist = sum(c.get("distance", 1.0) for c in relevant) / len(relevant)
             confidence = max(80, min(98, int(100 - (avg_dist * 15))))
+        elif is_explicit_gcet:
+            # CASE B — Explicit GCET Query with No Matching Document Chunks
+            print(f"[CHAT] Explicit GCET query '{effective_question}' returned 0 matching chunks. Returning strict KB notice...")
+            answer_text = "The requested information is not available in the current GCET Knowledge Base."
+            yield event("token", content=answer_text)
+            sources = []
+            confidence = 0
         else:
-            # CASE B — General Knowledge Mode
+            # CASE C — General Knowledge Mode
             print(f"[CHAT] Routing to General Gemini stream (is_explicit_gcet={is_explicit_gcet}, rel_count={len(relevant)}) for effective_question='{effective_question}'...")
             try:
                 stream_response = generate_general_answer_stream(
