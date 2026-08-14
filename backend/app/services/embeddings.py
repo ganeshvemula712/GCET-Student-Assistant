@@ -15,10 +15,14 @@ def get_embedding_model():
     return EMBEDDING_MODEL
 
 
-def generate_embeddings(texts: list[str]) -> list[list[float]]:
+def generate_embeddings(
+    texts: list[str],
+    max_retries: int = MAX_RETRIES,
+    retry_delay: float = 35.0,
+) -> list[list[float]]:
     """
     Convert a list of text strings into numerical vectors using Google Gemini Embeddings API (models/gemini-embedding-2).
-    Supports single queries and document chunk embedding.
+    Supports single queries (fast fail with max_retries=1) and document chunk embedding (default max_retries=10).
     Returns 3072-dimensional floating point vectors.
     """
     if not texts:
@@ -33,7 +37,7 @@ def generate_embeddings(texts: list[str]) -> list[list[float]]:
             text_item = "empty chunk"
 
         vector = None
-        for attempt in range(1, MAX_RETRIES + 1):
+        for attempt in range(1, max_retries + 1):
             try:
                 response = client.models.embed_content(
                     model=EMBEDDING_MODEL,
@@ -45,11 +49,16 @@ def generate_embeddings(texts: list[str]) -> list[list[float]]:
             except Exception as api_err:
                 err_msg = str(api_err)
                 if "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
-                    wait_sec = 35
-                    logger.warning(
-                        f"[GEMINI EMBEDDINGS RATE LIMIT] Rate limited (Attempt {attempt}/{MAX_RETRIES}). Waiting {wait_sec}s for quota window reset..."
-                    )
-                    time.sleep(wait_sec)
+                    if attempt < max_retries:
+                        logger.warning(
+                            f"[GEMINI EMBEDDINGS RATE LIMIT] Rate limited (Attempt {attempt}/{max_retries}). Waiting {retry_delay}s for quota window reset..."
+                        )
+                        time.sleep(retry_delay)
+                    else:
+                        logger.error(
+                            f"[GEMINI EMBEDDINGS RATE LIMIT] Max retries ({max_retries}) reached for embedding generation: {api_err}"
+                        )
+                        raise api_err
                 else:
                     logger.error(f"Gemini API embedding error: {api_err}")
                     raise api_err
@@ -57,6 +66,7 @@ def generate_embeddings(texts: list[str]) -> list[list[float]]:
         if vector is not None:
             embeddings.append(vector)
 
-        time.sleep(1.0) # Paced to stay well under Gemini 100 RPM quota limit
+        if len(cleaned_texts) > 1:
+            time.sleep(1.0) # Paced to stay well under Gemini 100 RPM quota limit
 
     return embeddings

@@ -14,7 +14,10 @@ from backend.app.services.rag import (
     generate_general_answer_stream,
     generate_rag_answer_stream,
 )
-from backend.app.services.retrieval import retrieve_relevant_chunks
+from backend.app.services.retrieval import (
+    RetrievalServiceError,
+    retrieve_relevant_chunks,
+)
 from backend.app.services.title_generator import generate_title_from_message
 
 RELEVANCE_THRESHOLD = 1.15
@@ -131,12 +134,53 @@ async def stream_chat(
 
         # 3. Retrieve candidate RAG chunks from ChromaDB using standalone query
         t_retrieval_start = time.perf_counter()
-        retrieved = retrieve_relevant_chunks(
-            question=search_query,
-            n_results=4,
-        )
+        try:
+            retrieved = retrieve_relevant_chunks(
+                question=search_query,
+                n_results=4,
+            )
+            retrieval_failed = False
+        except RetrievalServiceError as ret_err:
+            print(f"[CHAT] RetrievalServiceError encountered: {ret_err}")
+            retrieved = []
+            retrieval_failed = True
         t_retrieval_end = time.perf_counter()
-        print(f"[CHAT] RAG retrieval completed: {(t_retrieval_end - t_retrieval_start)*1000:.1f} ms (Found {len(retrieved)} candidate chunks for query='{search_query[:60]}...')")
+        print(f"[CHAT] RAG retrieval completed: {(t_retrieval_end - t_retrieval_start)*1000:.1f} ms (Failed: {retrieval_failed}, Found {len(retrieved)} candidate chunks for query='{search_query[:60]}...')")
+
+        if retrieval_failed:
+            print(f"[CHAT] Embedding retrieval service unavailable for effective_question='{search_query}'. Returning controlled failure response...")
+            service_unavailable_msg = (
+                "GCET Knowledge Base retrieval is temporarily unavailable due to embedding API rate limits. "
+                "Please try again in a few moments."
+            )
+            save_message(
+                db=db,
+                conversation_id=conversation_id,
+                role="user",
+                content=question,
+            )
+            yield event("token", content=service_unavailable_msg)
+
+            message = save_message(
+                db=db,
+                conversation_id=conversation_id,
+                role="assistant",
+                content=service_unavailable_msg,
+                sources=[],
+                confidence=0,
+                follow_up_questions=["Please try asking your question again in a minute."],
+            )
+
+            yield event(
+                "done",
+                message_id=message.id,
+                title=conversation.title,
+                sources=[],
+                confidence=0,
+                is_rag=False,
+                follow_up_questions=["Please try asking your question again in a minute."],
+            )
+            return
 
         # 4. Evaluate relevance & intent routing
         relevant = [

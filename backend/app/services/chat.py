@@ -9,7 +9,10 @@ from backend.app.services.rag import (
     generate_general_answer,
     generate_rag_answer,
 )
-from backend.app.services.retrieval import retrieve_relevant_chunks
+from backend.app.services.retrieval import (
+    RetrievalServiceError,
+    retrieve_relevant_chunks,
+)
 
 RELEVANCE_THRESHOLD = 1.25
 
@@ -66,10 +69,31 @@ def process_chat(
     )
 
     # 3. Retrieve relevant chunks
-    retrieved_chunks = retrieve_relevant_chunks(
-        question=request.question,
-        n_results=4,
-    )
+    try:
+        retrieved_chunks = retrieve_relevant_chunks(
+            question=request.question,
+            n_results=4,
+        )
+    except RetrievalServiceError:
+        service_unavailable_msg = (
+            "GCET Knowledge Base retrieval is temporarily unavailable due to embedding API rate limits. "
+            "Please try again in a few moments."
+        )
+        save_message(
+            db=db,
+            conversation_id=request.conversation_id,
+            role="assistant",
+            content=service_unavailable_msg,
+            sources=[],
+            confidence=0,
+            follow_up_questions=["Please try asking your question again in a minute."],
+        )
+        return ChatResponse(
+            answer=service_unavailable_msg,
+            sources=[],
+            confidence=0,
+            follow_up_questions=["Please try asking your question again in a minute."],
+        )
 
     relevant_chunks = [
         chunk
