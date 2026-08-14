@@ -20,51 +20,13 @@ from backend.app.services.retrieval import (
 )
 from backend.app.services.title_generator import generate_title_from_message
 
-import re
-
-RELEVANCE_THRESHOLD = 1.15
-
-EXPLICIT_GCET_KEYWORDS = (
-    "gcet", "geethanjali", "r22", "ar22", "r20", "r18", "r16",
-    "attendance", "condonation", "credit", "credits",
-    "placement", "placements", "recruitment", "recruiter", "recruiters",
-    "sgpa", "cgpa", "syllabus", "curriculum", "sem", "semester", "mid", "mids",
-    "examination", "examinations", "hostel", "principal", "hod", "detained", "promotion",
-    "lpa", "ctc",
-    "highest package", "average package", "lowest package", "package offered", "salary package",
-    "highest salary", "average salary", "salary offered",
-    "graduating batch", "graduates", "placement drive", "campus drive", "recruitment drive",
-    "companies visited", "visited for placements", "company offered",
-    "academic regulations", "gcet regulations", "college regulations", "academic rules"
+from backend.app.services.intent import (
+    is_explicit_gcet_query,
+    is_pure_general_concept,
+    should_bypass_retrieval,
 )
 
-
-def is_explicit_gcet_query(text: str) -> bool:
-    t_lower = text.lower().strip()
-    return any(re.search(r'\b' + re.escape(kw) + r'\b', t_lower) for kw in EXPLICIT_GCET_KEYWORDS)
-
-
-def is_pure_general_concept(text: str) -> bool:
-    t_lower = text.lower().strip()
-    greetings = {"hello", "hi", "hey", "hloo", "hollo", "greetings", "good morning", "good afternoon", "good evening"}
-    if t_lower in greetings:
-        return True
-
-    if "in general" in t_lower:
-        return True
-
-    general_phrases = [
-        "what is ai", "what is deep learning", "what is python",
-        "what is rag", "what is machine learning", "what is neural network", "what is a neural network",
-        "explain ai", "explain deep learning", "explain python",
-        "explain machine learning", "explain neural network", "explain rag",
-        "what does sql mean", "what is sql", "what is java", "what is c++",
-        "what is a company", "what is a salary",
-        "what is a package in java", "what is a package",
-        "what is a batch in machine learning", "what is a batch",
-        "what is a drive in computer systems", "what is a drive"
-    ]
-    return any(phrase in t_lower for phrase in general_phrases)
+RELEVANCE_THRESHOLD = 1.15
 
 
 def _generate_fallback_general_response(question: str) -> str:
@@ -175,9 +137,7 @@ async def stream_chat(
             is_explicit_gcet_query(sq_lower)
             or is_explicit_gcet_query(q_lower)
         )
-        is_general_concept = is_pure_general_concept(q_lower)
-
-        bypass_retrieval = is_general_concept and not is_explicit_gcet
+        bypass_retrieval = should_bypass_retrieval(question, search_query)
 
         if bypass_retrieval:
             print(f"[CHAT] Pre-retrieval intent check: bypassing vector retrieval for general question '{search_query[:50]}'")

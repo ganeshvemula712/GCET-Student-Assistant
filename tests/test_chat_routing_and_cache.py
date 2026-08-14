@@ -64,13 +64,22 @@ def test_document_ingestion_does_not_use_query_cache():
         assert len(res1) == 1
         assert mock_embed.call_count == 1
 
-        # Duplicate ingestion call should NOT use LRU query cache (generate_embeddings does not cache)
+        # Duplicate ingestion call should NOT use LRU query cache
         res2 = generate_embeddings(["Chunk text 1"])
         assert len(res2) == 1
         assert mock_embed.call_count == 2
 
 
 @pytest.mark.parametrize("general_query", [
+    "What is AI and ML?",
+    "What is ML?",
+    "Explain ML",
+    "What is Artificial Intelligence?",
+    "What is Machine Learning?",
+    "What is AI/ML?",
+    "Explain AI and ML",
+    "What is NLP?",
+    "What is Data Science?",
     "What is Python?",
     "Explain machine learning",
     "What is a neural network?",
@@ -91,7 +100,7 @@ def test_general_questions_bypass_or_fallback_to_general_knowledge(db_session, s
          patch("backend.app.services.chat.generate_general_answer") as mock_general:
 
         mock_history.return_value = ""
-        mock_retrieve.return_value = [] # No GCET document chunks match generic technical query
+        mock_retrieve.return_value = []
         mock_general.return_value = ("General Knowledge Answer", 85, [])
 
         response = process_chat(request=request, current_user=student, db=db_session)
@@ -103,6 +112,7 @@ def test_general_questions_bypass_or_fallback_to_general_knowledge(db_session, s
     "What is the minimum attendance at GCET?",
     "What are GCET academic regulations?",
     "What is the syllabus for Data Science?",
+    "What is the AI and ML syllabus at GCET?",
     "When are IV year semester exams?",
     "Who got the highest salary among 2026 graduates?",
     "What was the highest package offered?",
@@ -140,7 +150,7 @@ def test_strict_grounding_gcet_query_no_chunks_returns_kb_notice(db_session, stu
          patch("backend.app.services.chat.generate_general_answer") as mock_general:
 
         mock_history.return_value = ""
-        mock_retrieve.return_value = [] # No matching placement chunks in DB
+        mock_retrieve.return_value = []
 
         response = process_chat(request=request, current_user=student, db=db_session)
 
@@ -168,6 +178,27 @@ def test_gcet_question_retrieval_429_fails_fast_without_general_ai(db_session, s
 # DIRECT STREAMING TESTS FOR stream_chat()
 
 @pytest.mark.asyncio
+async def test_stream_chat_direct_what_is_ai_and_ml(db_session, student):
+    mock_request = MagicMock()
+    mock_request.is_disconnected = AsyncMock(return_value=False)
+
+    with patch("backend.app.services.chat_stream.get_conversation_history", return_value=""), \
+         patch("backend.app.services.chat_stream.retrieve_relevant_chunks") as mock_retrieve, \
+         patch("backend.app.services.chat_stream.generate_general_answer_stream") as mock_gen_stream:
+
+        mock_gen_stream.return_value = ["AI ", "and ", "ML ", "explanation."]
+
+        events = await _consume_stream(stream_chat("conv-s1", "What is AI and ML?", student, db_session, mock_request))
+
+        # Vector retrieval and embedding MUST NOT be called!
+        mock_retrieve.assert_not_called()
+
+        done_events = [json.loads(e) for e in events if "type" in e and '"done"' in e]
+        assert len(done_events) == 1
+        assert done_events[0]["mode"] == "general"
+
+
+@pytest.mark.asyncio
 async def test_stream_chat_direct_what_is_python(db_session, student):
     mock_request = MagicMock()
     mock_request.is_disconnected = AsyncMock(return_value=False)
@@ -178,7 +209,26 @@ async def test_stream_chat_direct_what_is_python(db_session, student):
 
         mock_gen_stream.return_value = ["Python ", "is ", "a ", "language."]
 
-        events = await _consume_stream(stream_chat("conv-s1", "What is Python?", student, db_session, mock_request))
+        events = await _consume_stream(stream_chat("conv-s2", "What is Python?", student, db_session, mock_request))
+
+        mock_retrieve.assert_not_called()
+        done_events = [json.loads(e) for e in events if "type" in e and '"done"' in e]
+        assert len(done_events) == 1
+        assert done_events[0]["mode"] == "general"
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_direct_what_is_machine_learning(db_session, student):
+    mock_request = MagicMock()
+    mock_request.is_disconnected = AsyncMock(return_value=False)
+
+    with patch("backend.app.services.chat_stream.get_conversation_history", return_value=""), \
+         patch("backend.app.services.chat_stream.retrieve_relevant_chunks") as mock_retrieve, \
+         patch("backend.app.services.chat_stream.generate_general_answer_stream") as mock_gen_stream:
+
+        mock_gen_stream.return_value = ["Machine ", "Learning ", "concept."]
+
+        events = await _consume_stream(stream_chat("conv-s3", "What is machine learning?", student, db_session, mock_request))
 
         mock_retrieve.assert_not_called()
         done_events = [json.loads(e) for e in events if "type" in e and '"done"' in e]
@@ -197,7 +247,7 @@ async def test_stream_chat_direct_package_in_java(db_session, student):
 
         mock_gen_stream.return_value = ["A ", "package ", "in ", "Java."]
 
-        events = await _consume_stream(stream_chat("conv-s2", "What is a package in Java?", student, db_session, mock_request))
+        events = await _consume_stream(stream_chat("conv-s4", "What is a package in Java?", student, db_session, mock_request))
 
         mock_retrieve.assert_not_called()
         done_events = [json.loads(e) for e in events if "type" in e and '"done"' in e]
@@ -217,7 +267,7 @@ async def test_stream_chat_direct_minimum_attendance(db_session, student):
         mock_retrieve.return_value = create_rag_chunks()
         mock_rag_stream.return_value = ["75% ", "attendance ", "required."]
 
-        events = await _consume_stream(stream_chat("conv-s3", "What is the minimum attendance at GCET?", student, db_session, mock_request))
+        events = await _consume_stream(stream_chat("conv-s5", "What is the minimum attendance at GCET?", student, db_session, mock_request))
 
         mock_retrieve.assert_called_once()
         done_events = [json.loads(e) for e in events if "type" in e and '"done"' in e]
@@ -226,19 +276,78 @@ async def test_stream_chat_direct_minimum_attendance(db_session, student):
 
 
 @pytest.mark.asyncio
-async def test_stream_chat_direct_placement_highest_salary(db_session, student):
+async def test_stream_chat_direct_ai_and_ml_syllabus_at_gcet(db_session, student):
     mock_request = MagicMock()
     mock_request.is_disconnected = AsyncMock(return_value=False)
 
     with patch("backend.app.services.chat_stream.get_conversation_history", return_value=""), \
          patch("backend.app.services.chat_stream.retrieve_relevant_chunks") as mock_retrieve, \
-         patch("backend.app.services.chat_stream.generate_rag_answer_stream") as mock_rag_stream, \
+         patch("backend.app.services.chat_stream.generate_rag_answer_stream") as mock_rag_stream:
+
+        mock_retrieve.return_value = create_rag_chunks()
+        mock_rag_stream.return_value = ["AI/ML ", "Syllabus."]
+
+        events = await _consume_stream(stream_chat("conv-s6", "What is the AI and ML syllabus at GCET?", student, db_session, mock_request))
+
+        mock_retrieve.assert_called_once()
+        done_events = [json.loads(e) for e in events if "type" in e and '"done"' in e]
+        assert len(done_events) == 1
+        assert done_events[0]["mode"] == "rag"
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_direct_highest_package_at_gcet(db_session, student):
+    mock_request = MagicMock()
+    mock_request.is_disconnected = AsyncMock(return_value=False)
+
+    with patch("backend.app.services.chat_stream.get_conversation_history", return_value=""), \
+         patch("backend.app.services.chat_stream.retrieve_relevant_chunks") as mock_retrieve, \
+         patch("backend.app.services.chat_stream.generate_rag_answer_stream") as mock_rag_stream:
+
+        mock_retrieve.return_value = create_rag_chunks()
+        mock_rag_stream.return_value = ["Highest ", "Package."]
+
+        events = await _consume_stream(stream_chat("conv-s7", "What is the highest package at GCET?", student, db_session, mock_request))
+
+        mock_retrieve.assert_called_once()
+        done_events = [json.loads(e) for e in events if "type" in e and '"done"' in e]
+        assert len(done_events) == 1
+        assert done_events[0]["mode"] == "rag"
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_direct_highest_salary_2026(db_session, student):
+    mock_request = MagicMock()
+    mock_request.is_disconnected = AsyncMock(return_value=False)
+
+    with patch("backend.app.services.chat_stream.get_conversation_history", return_value=""), \
+         patch("backend.app.services.chat_stream.retrieve_relevant_chunks") as mock_retrieve, \
+         patch("backend.app.services.chat_stream.generate_rag_answer_stream") as mock_rag_stream:
+
+        mock_retrieve.return_value = create_rag_chunks()
+        mock_rag_stream.return_value = ["Highest ", "Salary."]
+
+        events = await _consume_stream(stream_chat("conv-s8", "Who got the highest salary among 2026 graduates?", student, db_session, mock_request))
+
+        mock_retrieve.assert_called_once()
+        done_events = [json.loads(e) for e in events if "type" in e and '"done"' in e]
+        assert len(done_events) == 1
+        assert done_events[0]["mode"] == "rag"
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_direct_zero_chunks_returns_strict_kb_notice(db_session, student):
+    mock_request = MagicMock()
+    mock_request.is_disconnected = AsyncMock(return_value=False)
+
+    with patch("backend.app.services.chat_stream.get_conversation_history", return_value=""), \
+         patch("backend.app.services.chat_stream.retrieve_relevant_chunks") as mock_retrieve, \
          patch("backend.app.services.chat_stream.generate_general_answer_stream") as mock_gen_stream:
 
-        mock_retrieve.return_value = [] # 0 chunks in DB
+        mock_retrieve.return_value = []
         mock_gen_stream.return_value = ["General answer"]
 
-        events = await _consume_stream(stream_chat("conv-s4", "Who got the highest salary among 2026 graduates?", student, db_session, mock_request))
+        events = await _consume_stream(stream_chat("conv-s9", "Who got the highest salary among 2026 graduates?", student, db_session, mock_request))
 
         mock_retrieve.assert_called_once()
         mock_gen_stream.assert_not_called()
@@ -248,27 +357,7 @@ async def test_stream_chat_direct_placement_highest_salary(db_session, student):
 
 
 @pytest.mark.asyncio
-async def test_stream_chat_direct_companies_visited(db_session, student):
-    mock_request = MagicMock()
-    mock_request.is_disconnected = AsyncMock(return_value=False)
-
-    with patch("backend.app.services.chat_stream.get_conversation_history", return_value=""), \
-         patch("backend.app.services.chat_stream.retrieve_relevant_chunks") as mock_retrieve, \
-         patch("backend.app.services.chat_stream.generate_rag_answer_stream") as mock_rag_stream:
-
-        mock_retrieve.return_value = create_rag_chunks()
-        mock_rag_stream.return_value = ["Top ", "companies."]
-
-        events = await _consume_stream(stream_chat("conv-s5", "Which companies visited GCET for placements?", student, db_session, mock_request))
-
-        mock_retrieve.assert_called_once()
-        done_events = [json.loads(e) for e in events if "type" in e and '"done"' in e]
-        assert len(done_events) == 1
-        assert done_events[0]["mode"] == "rag"
-
-
-@pytest.mark.asyncio
-async def test_stream_chat_direct_429_retrieval_unavailable(db_session, student):
+async def test_stream_chat_direct_429_returns_retrieval_unavailable(db_session, student):
     mock_request = MagicMock()
     mock_request.is_disconnected = AsyncMock(return_value=False)
 
@@ -278,9 +367,31 @@ async def test_stream_chat_direct_429_retrieval_unavailable(db_session, student)
 
         mock_retrieve.side_effect = RetrievalServiceError("429 Rate Limit")
 
-        events = await _consume_stream(stream_chat("conv-s6", "What is the minimum attendance at GCET?", student, db_session, mock_request))
+        events = await _consume_stream(stream_chat("conv-s10", "What is the minimum attendance at GCET?", student, db_session, mock_request))
 
         mock_gen_stream.assert_not_called()
         done_events = [json.loads(e) for e in events if "type" in e and '"done"' in e]
         assert len(done_events) == 1
         assert done_events[0]["mode"] == "retrieval_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_general_query_when_embedding_api_429_still_returns_general_ai(db_session, student):
+    mock_request = MagicMock()
+    mock_request.is_disconnected = AsyncMock(return_value=False)
+
+    with patch("backend.app.services.chat_stream.get_conversation_history", return_value=""), \
+         patch("backend.app.services.chat_stream.retrieve_relevant_chunks") as mock_retrieve, \
+         patch("backend.app.services.chat_stream.generate_general_answer_stream") as mock_gen_stream:
+
+        mock_retrieve.side_effect = RetrievalServiceError("429 Rate Limit")
+        mock_gen_stream.return_value = ["AI ", "and ", "ML ", "response."]
+
+        events = await _consume_stream(stream_chat("conv-s11", "What is AI and ML?", student, db_session, mock_request))
+
+        # Vector retrieval should NEVER be called for general query
+        mock_retrieve.assert_not_called()
+
+        done_events = [json.loads(e) for e in events if "type" in e and '"done"' in e]
+        assert len(done_events) == 1
+        assert done_events[0]["mode"] == "general"
