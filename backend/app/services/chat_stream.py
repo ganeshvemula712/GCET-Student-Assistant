@@ -59,7 +59,10 @@ def is_pure_general_concept(text: str) -> bool:
         "explain ai", "explain deep learning", "explain python",
         "explain machine learning", "explain neural network", "explain rag",
         "what does sql mean", "what is sql", "what is java", "what is c++",
-        "what is a company", "what is a salary"
+        "what is a company", "what is a salary",
+        "what is a package in java", "what is a package",
+        "what is a batch in machine learning", "what is a batch",
+        "what is a drive in computer systems", "what is a drive"
     ]
     return any(phrase in t_lower for phrase in general_phrases)
 
@@ -168,14 +171,11 @@ async def stream_chat(
         # 3. Intent Pre-Check & Vector Retrieval
         q_lower = question.lower().strip()
         sq_lower = search_query.lower().strip()
-        is_explicit_gcet = any(kw in sq_lower for kw in GCET_KEYWORDS) or any(kw in q_lower for kw in GCET_KEYWORDS)
-        is_general_concept = any(
-            phrase in q_lower for phrase in [
-                "what is ai", "what is deep learning", "what is python",
-                "what is rag", "what is machine learning", "what is neural network",
-                "explain ai", "explain deep learning", "hello", "hi", "hey", "hloo", "greetings"
-            ]
+        is_explicit_gcet = (
+            is_explicit_gcet_query(sq_lower)
+            or is_explicit_gcet_query(q_lower)
         )
+        is_general_concept = is_pure_general_concept(q_lower)
 
         bypass_retrieval = is_general_concept and not is_explicit_gcet
 

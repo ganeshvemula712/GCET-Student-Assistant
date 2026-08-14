@@ -53,7 +53,10 @@ def is_pure_general_concept(text: str) -> bool:
         "explain ai", "explain deep learning", "explain python",
         "explain machine learning", "explain neural network", "explain rag",
         "what does sql mean", "what is sql", "what is java", "what is c++",
-        "what is a company", "what is a salary"
+        "what is a company", "what is a salary",
+        "what is a package in java", "what is a package",
+        "what is a batch in machine learning", "what is a batch",
+        "what is a drive in computer systems", "what is a drive"
     ]
     return any(phrase in t_lower for phrase in general_phrases)
 
