@@ -132,20 +132,38 @@ async def stream_chat(
             conversation_id=conversation_id,
         )
 
-        # 3. Retrieve candidate RAG chunks from ChromaDB using standalone query
-        t_retrieval_start = time.perf_counter()
-        try:
-            retrieved = retrieve_relevant_chunks(
-                question=search_query,
-                n_results=4,
-            )
-            retrieval_failed = False
-        except RetrievalServiceError as ret_err:
-            print(f"[CHAT] RetrievalServiceError encountered: {ret_err}")
+        # 3. Intent Pre-Check & Vector Retrieval
+        q_lower = question.lower().strip()
+        sq_lower = search_query.lower().strip()
+        is_explicit_gcet = any(kw in sq_lower for kw in GCET_KEYWORDS)
+        is_general_concept = any(
+            phrase in q_lower for phrase in [
+                "what is ai", "what is deep learning", "what is python",
+                "what is rag", "what is machine learning", "what is neural network",
+                "explain ai", "explain deep learning", "hello", "hi", "hey", "hloo", "greetings"
+            ]
+        )
+
+        bypass_retrieval = is_general_concept and not is_explicit_gcet
+
+        if bypass_retrieval:
+            print(f"[CHAT] Pre-retrieval intent check: bypassing vector retrieval for general question '{search_query[:50]}'")
             retrieved = []
-            retrieval_failed = True
-        t_retrieval_end = time.perf_counter()
-        print(f"[CHAT] RAG retrieval completed: {(t_retrieval_end - t_retrieval_start)*1000:.1f} ms (Failed: {retrieval_failed}, Found {len(retrieved)} candidate chunks for query='{search_query[:60]}...')")
+            retrieval_failed = False
+        else:
+            t_retrieval_start = time.perf_counter()
+            try:
+                retrieved = retrieve_relevant_chunks(
+                    question=search_query,
+                    n_results=4,
+                )
+                retrieval_failed = False
+            except RetrievalServiceError as ret_err:
+                print(f"[CHAT] RetrievalServiceError encountered: {ret_err}")
+                retrieved = []
+                retrieval_failed = True
+            t_retrieval_end = time.perf_counter()
+            print(f"[CHAT] RAG retrieval completed: {(t_retrieval_end - t_retrieval_start)*1000:.1f} ms (Failed: {retrieval_failed}, Found {len(retrieved)} candidate chunks for query='{search_query[:60]}...')")
 
         if retrieval_failed:
             print(f"[CHAT] Embedding retrieval service unavailable for effective_question='{search_query}'. Returning controlled failure response...")
@@ -173,6 +191,7 @@ async def stream_chat(
 
             yield event(
                 "done",
+                mode="retrieval_unavailable",
                 message_id=message.id,
                 title=conversation.title,
                 sources=[],
@@ -189,19 +208,7 @@ async def stream_chat(
             if chunk.get("distance", 2.0) <= RELEVANCE_THRESHOLD
         ]
 
-        q_lower = question.lower().strip()
-        sq_lower = search_query.lower().strip()
-        is_explicit_gcet = any(kw in sq_lower for kw in GCET_KEYWORDS)
-        is_general_concept = any(
-            phrase in q_lower for phrase in [
-                "what is ai", "what is deep learning", "what is python",
-                "what is rag", "what is machine learning", "what is neural network",
-                "explain ai", "explain deep learning"
-            ]
-        )
-
-        # General conceptual questions default to General Knowledge unless explicitly asking about GCET rules
-        if is_general_concept and not is_explicit_gcet:
+        if bypass_retrieval:
             is_rag_mode = False
         else:
             is_rag_mode = len(relevant) > 0 and (is_explicit_gcet or (len(relevant) > 0 and relevant[0].get("distance", 2.0) <= 0.95))
@@ -314,6 +321,7 @@ async def stream_chat(
 
         yield event(
             "done",
+            mode="rag" if is_rag_mode else "general",
             message_id=message.id,
             title=conversation.title,
             sources=sources,

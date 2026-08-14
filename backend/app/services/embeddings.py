@@ -59,10 +59,6 @@ def generate_embeddings(
                             f"[GEMINI EMBEDDINGS RATE LIMIT] Max retries ({max_retries}) reached for embedding generation: {api_err}"
                         )
                         raise api_err
-                else:
-                    logger.error(f"Gemini API embedding error: {api_err}")
-                    raise api_err
-
         if vector is not None:
             embeddings.append(vector)
 
@@ -70,3 +66,36 @@ def generate_embeddings(
             time.sleep(1.0) # Paced to stay well under Gemini 100 RPM quota limit
 
     return embeddings
+
+from functools import lru_cache
+
+QUERY_CACHE_SIZE = 300
+
+
+@lru_cache(maxsize=QUERY_CACHE_SIZE)
+def _cached_query_embedding(normalized_query: str) -> tuple[float, ...]:
+    """
+    Internal bounded LRU-cached helper for single query embeddings.
+    Returns tuple of floats for hashability and immutability.
+    """
+    vectors = generate_embeddings(
+        [normalized_query],
+        max_retries=1,
+        retry_delay=2.0,
+    )
+    if not vectors:
+        raise ValueError("Embedding generation returned empty result")
+    return tuple(vectors[0])
+
+
+def generate_query_embedding(question: str) -> list[float]:
+    """
+    Convert a single chat query string into a 3072D vector with LRU caching.
+    Normalizes query string (strip leading/trailing whitespace and lowercase) for cache lookup.
+    """
+    if not question or not question.strip():
+        return []
+
+    normalized_key = question.strip().lower()
+    tuple_vector = _cached_query_embedding(normalized_key)
+    return list(tuple_vector)

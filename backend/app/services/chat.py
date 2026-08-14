@@ -16,6 +16,14 @@ from backend.app.services.retrieval import (
 
 RELEVANCE_THRESHOLD = 1.25
 
+GCET_KEYWORDS = (
+    "gcet", "r22", "ar22", "r20", "attendance", "condonation", "credit", "credits",
+    "placement", "placements", "campus", "fee", "fees", "donation", "donations",
+    "admission", "admissions", "detained", "promotion",
+    "sgpa", "cgpa", "regulation", "regulations", "autonomous", "geethanjali",
+    "syllabus", "curriculum", "sem", "semester", "mid", "lab", "internship", "hostel"
+)
+
 
 def process_chat(
     request: ChatRequest,
@@ -68,32 +76,47 @@ def process_chat(
         content=request.question,
     )
 
-    # 3. Retrieve relevant chunks
-    try:
-        retrieved_chunks = retrieve_relevant_chunks(
-            question=request.question,
-            n_results=4,
-        )
-    except RetrievalServiceError:
-        service_unavailable_msg = (
-            "GCET Knowledge Base retrieval is temporarily unavailable due to embedding API rate limits. "
-            "Please try again in a few moments."
-        )
-        save_message(
-            db=db,
-            conversation_id=request.conversation_id,
-            role="assistant",
-            content=service_unavailable_msg,
-            sources=[],
-            confidence=0,
-            follow_up_questions=["Please try asking your question again in a minute."],
-        )
-        return ChatResponse(
-            answer=service_unavailable_msg,
-            sources=[],
-            confidence=0,
-            follow_up_questions=["Please try asking your question again in a minute."],
-        )
+    # 3. Intent Pre-Check & Vector Retrieval
+    q_lower = request.question.lower().strip()
+    is_explicit_gcet = any(kw in q_lower for kw in GCET_KEYWORDS)
+    is_general_concept = any(
+        phrase in q_lower for phrase in [
+            "what is ai", "what is deep learning", "what is python",
+            "what is rag", "what is machine learning", "what is neural network",
+            "explain ai", "explain deep learning", "hello", "hi", "hey", "hloo", "greetings"
+        ]
+    )
+
+    bypass_retrieval = is_general_concept and not is_explicit_gcet
+
+    if bypass_retrieval:
+        retrieved_chunks = []
+    else:
+        try:
+            retrieved_chunks = retrieve_relevant_chunks(
+                question=request.question,
+                n_results=4,
+            )
+        except RetrievalServiceError:
+            service_unavailable_msg = (
+                "GCET Knowledge Base retrieval is temporarily unavailable due to embedding API rate limits. "
+                "Please try again in a few moments."
+            )
+            save_message(
+                db=db,
+                conversation_id=request.conversation_id,
+                role="assistant",
+                content=service_unavailable_msg,
+                sources=[],
+                confidence=0,
+                follow_up_questions=["Please try asking your question again in a minute."],
+            )
+            return ChatResponse(
+                answer=service_unavailable_msg,
+                sources=[],
+                confidence=0,
+                follow_up_questions=["Please try asking your question again in a minute."],
+            )
 
     relevant_chunks = [
         chunk

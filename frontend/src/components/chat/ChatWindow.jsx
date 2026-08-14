@@ -252,7 +252,7 @@ export default function ChatWindow({
             {streamingAnswer && (
               <MessageBubble
                 key={streamingMessageId ?? `stream-${targetConvId}`}
-                message={{ id: streamingMessageId ?? `stream-${targetConvId}` }}
+                message={{ id: streamingMessageId ?? `stream-${targetConvId}`, mode: streamingMetadata.mode }}
                 role="assistant"
                 content={streamingAnswer}
                 sources={[]}
@@ -309,7 +309,7 @@ export default function ChatWindow({
             if (wasAborted) {
               setStreamingAnswer("");
               setStreamingMessageId(null);
-              setStreamingMetadata({ confidence: 0, followUpQuestions: [] });
+              setStreamingMetadata({ confidence: 0, followUpQuestions: [], mode: null });
               setIsStreaming(false);
               return;
             }
@@ -317,6 +317,7 @@ export default function ChatWindow({
             setStreamingMetadata({
               confidence: metadata?.confidence ?? 0,
               followUpQuestions: metadata?.follow_up_questions ?? [],
+              mode: metadata?.mode,
             });
             setStreamingAnswer("");
             setStreamingMessageId(null);

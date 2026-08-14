@@ -125,13 +125,19 @@ function MessageBubble({
                   <div>
                     <h4 className="text-xs font-bold text-white">GCET AI Assistant</h4>
                     <p className="text-[10px] text-gray-400">
-                      {normalizedSources.length > 0 ? "RAG Knowledge Engine" : "General Knowledge AI"}
+                      {message?.mode === "retrieval_unavailable" || (content && content.includes("retrieval is temporarily unavailable"))
+                        ? "Retrieval Service Unavailable"
+                        : message?.mode === "knowledge_unavailable"
+                        ? "Knowledge Base Unavailable"
+                        : normalizedSources.length > 0
+                        ? "RAG Knowledge Engine"
+                        : "General Knowledge AI"}
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <ConfidenceBadge score={confidence ?? 0} sourcesCount={normalizedSources.length} />
+                  <ConfidenceBadge score={confidence ?? 0} sourcesCount={normalizedSources.length} mode={message?.mode} content={content} />
                   <span className="text-[11px] font-medium text-gray-400">
                     {normalizedSources.length > 0 ? `${normalizedSources.length} Grounded Sources` : "General Knowledge"}
                   </span>

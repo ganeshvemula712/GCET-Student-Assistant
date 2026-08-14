@@ -1,13 +1,37 @@
 import { ShieldCheck, Zap, Sparkles } from "lucide-react";
 
-export default function ConfidenceBadge({ score = 0, sourcesCount = 0 }) {
+export default function ConfidenceBadge({ score = 0, sourcesCount = 0, mode = null, content = "" }) {
   const numScore = Number(score) || 0;
   const numSources = Number(sourcesCount) || 0;
-  const isRag = numSources > 0;
+
+  // Determine effective mode: explicit backend mode or fallback logic for legacy message data
+  const effectiveMode = mode || (
+    numSources > 0
+      ? "rag"
+      : (content && content.includes("retrieval is temporarily unavailable")
+          ? "retrieval_unavailable"
+          : "general")
+  );
 
   let styles;
 
-  if (isRag) {
+  if (effectiveMode === "retrieval_unavailable") {
+    styles = {
+      bg: "bg-rose-500/10",
+      text: "text-rose-400",
+      border: "border-rose-500/20",
+      label: "Retrieval Unavailable",
+      icon: Zap,
+    };
+  } else if (effectiveMode === "knowledge_unavailable") {
+    styles = {
+      bg: "bg-amber-500/10",
+      text: "text-amber-400",
+      border: "border-amber-500/20",
+      label: "Knowledge Base Unavailable",
+      icon: Zap,
+    };
+  } else if (effectiveMode === "rag") {
     if (numScore >= 80) {
       styles = {
         bg: "bg-emerald-500/10",
@@ -36,11 +60,12 @@ export default function ConfidenceBadge({ score = 0, sourcesCount = 0 }) {
   }
 
   const Icon = styles.icon;
+  const isRag = effectiveMode === "rag";
 
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${styles.bg} ${styles.text} ${styles.border}`}
-      title={isRag ? `AI Retrieval Confidence: ${numScore}%` : "General Knowledge AI Answer"}
+      title={isRag ? `AI Retrieval Confidence: ${numScore}%` : styles.label}
     >
       <Icon size={13} />
       <span>{styles.label}</span>
