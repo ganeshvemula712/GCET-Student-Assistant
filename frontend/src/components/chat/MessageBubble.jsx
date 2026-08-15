@@ -70,11 +70,11 @@ function MessageBubble({
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2 }}
-        className={`mb-4 flex ${isUser ? "justify-end" : "justify-start"}`}
+        className={`mb-4 flex min-w-0 w-full ${isUser ? "justify-end" : "justify-start"}`}
       >
         {isUser ? (
-          <div className="group flex max-w-5xl items-start gap-3">
-            <div className="flex flex-col items-end">
+          <div className="group flex max-w-5xl min-w-0 items-start gap-2.5 sm:gap-3">
+            <div className="flex flex-col items-end min-w-0">
               <div className="mb-1 flex items-center gap-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                 <button
                   type="button"
@@ -105,8 +105,8 @@ function MessageBubble({
                   </button>
                 )}
               </div>
-              <div className="rounded-2xl rounded-tr-none bg-gradient-to-r from-emerald-600 to-teal-600 px-4.5 py-3 text-base font-medium text-white shadow-lg">
-                <p className="whitespace-pre-wrap leading-relaxed">{content}</p>
+              <div className="rounded-2xl rounded-tr-none bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-3 text-sm sm:text-base font-medium text-white shadow-lg min-w-0 max-w-full break-words [overflow-wrap:anywhere]">
+                <p className="whitespace-pre-wrap leading-relaxed break-words [overflow-wrap:anywhere]">{content}</p>
               </div>
               <span className="mt-1 text-[10px] text-gray-500">{formatTimestamp(message?.created_at)}</span>
             </div>
@@ -115,8 +115,8 @@ function MessageBubble({
             </div>
           </div>
         ) : (
-          <div className="w-full max-w-6xl">
-            <div className="rounded-3xl border border-gray-800 bg-[#111827] p-4 sm:p-5 shadow-xl backdrop-blur-sm">
+          <div className="w-full max-w-6xl min-w-0">
+            <div className="rounded-2xl sm:rounded-3xl border border-gray-800 bg-[#111827] p-3.5 sm:p-5 shadow-xl backdrop-blur-sm min-w-0 max-w-full overflow-hidden">
               <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2 border-b border-gray-800/80 pb-2.5">
                 <div className="flex items-center gap-2.5">
                   <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 text-gray-950 shadow-md">
