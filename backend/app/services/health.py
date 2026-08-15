@@ -60,9 +60,45 @@ def check_embeddings() -> bool:
         return False
 
 
+def ensure_database_schema_migrations() -> None:
+    """
+    Ensure database table columns match the latest SQLAlchemy models.
+    Base.metadata.create_all() does not alter existing tables to add new columns.
+    """
+    db: Session = SessionLocal()
+    try:
+        bind_engine = db.get_bind()
+        dialect_name = bind_engine.dialect.name
+
+        if dialect_name == "postgresql":
+            db.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS category VARCHAR DEFAULT 'General Academic'"))
+            db.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS tags VARCHAR DEFAULT ''"))
+            db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS picture VARCHAR"))
+            db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS given_name VARCHAR"))
+            db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS family_name VARCHAR"))
+            db.commit()
+            print("[SCHEMA MIGRATION] PostgreSQL 'documents' and 'users' table columns verified/added.")
+        elif dialect_name == "sqlite":
+            try:
+                db.execute(text("ALTER TABLE documents ADD COLUMN category VARCHAR DEFAULT 'General Academic'"))
+                db.commit()
+            except Exception:
+                db.rollback()
+            try:
+                db.execute(text("ALTER TABLE documents ADD COLUMN tags VARCHAR DEFAULT ''"))
+                db.commit()
+            except Exception:
+                db.rollback()
+    except Exception as e:
+        db.rollback()
+        print(f"[SCHEMA MIGRATION NOTICE] {e}")
+    finally:
+        db.close()
+
+
 def run_startup_checks() -> None:
     """
-    Run all startup validation checks.
+    Run all startup validation checks and schema migrations.
 
     Raises:
         RuntimeError: If any required service is unavailable.
@@ -94,6 +130,9 @@ def run_startup_checks() -> None:
         raise RuntimeError(
             "Startup validation failed. One or more services are unavailable."
         )
+
+    # Perform automated column migrations for existing tables
+    ensure_database_schema_migrations()
 
     print("[READY] Application Ready")
     print("=" * 55 + "\n")

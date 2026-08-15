@@ -1,7 +1,10 @@
+import logging
 from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger("uvicorn.error")
 
 
 def register_exception_handlers(app: FastAPI):
@@ -30,6 +33,7 @@ def register_exception_handlers(app: FastAPI):
         request: Request,
         exc: Exception,
     ):
+        logger.error(f"[UNHANDLED EXCEPTION] Path={request.url.path} | Error: {exc}", exc_info=True)
         return JSONResponse(
             status_code=500,
             content={
