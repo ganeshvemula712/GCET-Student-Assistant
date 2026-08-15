@@ -117,19 +117,14 @@ export default function MobileNavDrawer({ open, onClose }) {
           >
             {/* Drawer Header */}
             <div className="flex items-center justify-between border-b border-white/10 p-4">
-              <GcetLogo
-                showText={true}
-                title="GCET AI Assistant"
-                subtitle="Academic Workspace"
-                className="scale-90 origin-left"
-              />
+              <GcetLogo showText={true} />
               <button
                 type="button"
                 onClick={onClose}
                 aria-label="Close navigation menu"
                 className="flex size-9 items-center justify-center rounded-xl bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10 hover:text-white transition"
               >
-                <X size={20} />
+                <X size={20} weight="bold" />
               </button>
             </div>
 
@@ -151,14 +146,14 @@ export default function MobileNavDrawer({ open, onClose }) {
                     to={item.path}
                     onClick={onClose}
                     className={({ isActive }) =>
-                      `flex items-center gap-3.5 rounded-xl px-4 py-3 text-sm font-semibold transition ${
+                      `flex items-center gap-3.5 rounded-xl px-4 py-3 text-sm font-bold transition ${
                         isActive
-                          ? "bg-blue-600 text-white shadow-md shadow-blue-600/20"
+                          ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
                           : "text-gray-300 hover:bg-white/10 hover:text-white"
                       }`
                     }
                   >
-                    <Icon size={20} />
+                    <Icon size={20} weight="bold" />
                     <span>{item.title}</span>
                   </NavLink>
                 );
@@ -170,9 +165,9 @@ export default function MobileNavDrawer({ open, onClose }) {
               <button
                 type="button"
                 onClick={handleLogout}
-                className="flex w-full items-center justify-center gap-3 rounded-xl bg-red-600/90 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-600 shadow-md shadow-red-600/20 cursor-pointer"
+                className="flex w-full items-center justify-center gap-3 rounded-xl bg-rose-600/90 px-4 py-3 text-sm font-bold text-white transition hover:bg-rose-600 shadow-md shadow-rose-600/20 cursor-pointer"
               >
-                <SignOut size={20} />
+                <SignOut size={20} weight="bold" />
                 <span>Logout</span>
               </button>
             </div>
