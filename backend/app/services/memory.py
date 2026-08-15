@@ -1,6 +1,7 @@
 import re
 from sqlalchemy.orm import Session
 
+from backend.app.services.intent import is_explicit_gcet_query
 from backend.app.models.message import Message
 
 
@@ -38,9 +39,10 @@ def get_conversation_history(
 GCET_ACADEMIC_TOPICS = {
     "gcet", "geethanjali", "admission", "admissions", "donation", "donations", "fee", "fees",
     "management", "quota", "seat", "seats", "cutoff", "cutoffs",
-    "eligibility", "criteria", "regulation", "regulations", "r22", "ar22", "r20",
+    "eligibility", "criteria", "regulation", "regulations", "r22", "ar22", "r20", "ar25", "r25",
     "attendance", "condonation", "credit", "credits", "detained", "promotion",
-    "sgpa", "cgpa", "exam", "exams", "timetable", "mid", "lab", "hostel",
+    "sgpa", "cgpa", "exam", "exams", "timetable", "schedule", "calendar", "calender", "caleder",
+    "overview", "instructions", "training", "mid", "lab", "hostel",
     "syllabus", "curriculum", "placement", "placements"
 }
 
@@ -130,7 +132,10 @@ def build_contextual_search_query(
     if is_standalone_general and not has_explicit_gcet_brand and not has_anaphora and not has_followup_pattern:
         return q_clean, False
 
-    # 3. Check for standalone GCET topic nouns (e.g. "What is the attendance requirement?")
+    # 3. Check for standalone GCET topic nouns / explicit document queries
+    if is_explicit_gcet_query(q_lower) and not (has_anaphora or has_followup_pattern):
+        return q_clean, False
+
     current_gcet_topics = words.intersection(GCET_ACADEMIC_TOPICS)
     if current_gcet_topics and not has_anaphora and not has_followup_pattern and not (has_followup_prefix and len(words) <= 5):
         return q_clean, False

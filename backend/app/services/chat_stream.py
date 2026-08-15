@@ -26,7 +26,7 @@ from backend.app.services.intent import (
     should_bypass_retrieval,
 )
 
-RELEVANCE_THRESHOLD = 1.15
+RELEVANCE_THRESHOLD = 1.45
 
 
 def _generate_fallback_general_response(question: str) -> str:
@@ -204,7 +204,7 @@ async def stream_chat(
         if bypass_retrieval:
             is_rag_mode = False
         else:
-            is_rag_mode = len(relevant) > 0 and (is_explicit_gcet or (len(relevant) > 0 and relevant[0].get("distance", 2.0) <= 0.95))
+            is_rag_mode = len(relevant) > 0 and (is_explicit_gcet or relevant[0].get("distance", 2.0) <= RELEVANCE_THRESHOLD)
 
         answer_text = ""
         sources = []
@@ -319,9 +319,16 @@ async def stream_chat(
         t_end = time.perf_counter()
         print(f"[CHAT] Stream completed: total_time={(t_end - t_start)*1000:.1f} ms, mode={'RAG' if is_rag_mode else 'General'}, answer_len={len(answer_text)}")
 
+        if is_rag_mode:
+            determined_mode = "rag"
+        elif is_explicit_gcet:
+            determined_mode = "knowledge_unavailable"
+        else:
+            determined_mode = "general"
+
         yield event(
             "done",
-            mode="rag" if is_rag_mode else "general",
+            mode=determined_mode,
             message_id=message.id,
             title=conversation.title,
             sources=sources,

@@ -20,7 +20,7 @@ from backend.app.services.intent import (
     should_bypass_retrieval,
 )
 
-RELEVANCE_THRESHOLD = 1.25
+RELEVANCE_THRESHOLD = 1.45
 
 
 def process_chat(

@@ -5,11 +5,13 @@ export default function ConfidenceBadge({ score = 0, sourcesCount = 0, mode = nu
   const numSources = Number(sourcesCount) || 0;
 
   // Determine effective mode: explicit backend mode or fallback logic for legacy message data
-  const effectiveMode = mode || (
+  const effectiveMode = (mode && mode !== "general") ? mode : (
     numSources > 0
       ? "rag"
       : (content && content.includes("retrieval is temporarily unavailable")
           ? "retrieval_unavailable"
+          : (content && content.includes("not available in the current GCET Knowledge Base"))
+          ? "knowledge_unavailable"
           : "general")
   );
 

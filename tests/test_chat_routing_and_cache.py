@@ -81,6 +81,8 @@ def test_document_ingestion_does_not_use_query_cache():
     "What is NLP?",
     "What is Data Science?",
     "What is Python?",
+    "What is Java?",
+    "What is RAG?",
     "Explain machine learning",
     "What is a neural network?",
     "Hello",
@@ -121,7 +123,14 @@ def test_general_questions_bypass_or_fallback_to_general_knowledge(db_session, s
     "What are the placement statistics for 2026?",
     "What is the highest package at GCET?",
     "Which company offered the highest package to GCET students?",
-    "What are the academic regulations at GCET?"
+    "What are the academic regulations at GCET?",
+    "do you have acadamic caleder data",
+    "time table of 4th yr 1 st sem",
+    "What is the IV year I semester timetable?",
+    "4th year 1st semester DS timetable",
+    "According to the B.Tech Academic Calendar 2025-26, what are the important academic dates?",
+    "What is DS_AR25 about?",
+    "What are the training requirements in the uploaded document?"
 ])
 def test_gcet_questions_execute_retrieval(db_session, student, gcet_query):
     request = ChatRequest(conversation_id="conv-123", question=gcet_query)
@@ -354,6 +363,10 @@ async def test_stream_chat_direct_zero_chunks_returns_strict_kb_notice(db_sessio
 
         token_text = "".join(json.loads(e).get("content", "") for e in events if '"token"' in e)
         assert "The requested information is not available in the current GCET Knowledge Base." in token_text
+
+        done_events = [json.loads(e) for e in events if "type" in e and '"done"' in e]
+        assert len(done_events) == 1
+        assert done_events[0]["mode"] == "knowledge_unavailable"
 
 
 @pytest.mark.asyncio
