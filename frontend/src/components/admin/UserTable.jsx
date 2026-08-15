@@ -85,7 +85,6 @@ export default function UserTable() {
               <tr>
                 <th className="pb-3 pt-2 font-semibold">User Details</th>
                 <th className="pb-3 pt-2 font-semibold">Role</th>
-                <th className="pb-3 pt-2 font-semibold">Department</th>
                 <th className="pb-3 pt-2 font-semibold">Status</th>
                 <th className="pb-3 pt-2 font-semibold">Joined Date</th>
                 <th className="pb-3 pt-2 text-right font-semibold">Actions</th>
@@ -96,7 +95,7 @@ export default function UserTable() {
                 const isAdmin = user.role === "admin";
                 const initials = user.name?.charAt(0)?.toUpperCase() || "U";
                 const joinedDate = user.created_at
-                  ? new Date(user.created_at).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })
+                  ? new Date(user.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
                   : "N/A";
 
                 return (
@@ -124,7 +123,6 @@ export default function UserTable() {
                         {user.role?.toUpperCase() || "STUDENT"}
                       </span>
                     </td>
-                    <td className="py-3 text-gray-300">CSE • R22</td>
                     <td className="py-3">
                       <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold text-[11px]">
                         <CheckCircle2 size={12} /> Active

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 from backend.app.core.roles import UserRole
@@ -8,6 +10,7 @@ class AdminUserResponse(BaseModel):
     name: str
     email: str
     role: UserRole
+    created_at: datetime | None = None
 
     class Config:
         from_attributes = True
