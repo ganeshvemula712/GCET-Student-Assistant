@@ -148,29 +148,25 @@ export default function LoginForm() {
   }
 
   return (
-    <div className="w-full max-w-[440px] rounded-3xl border border-gray-800/80 bg-[#0B1120]/95 p-6 sm:p-9 shadow-2xl backdrop-blur-2xl relative min-w-0">
-      {/* Top Badge */}
-      <div className="mb-5 flex justify-center">
-        <div className="inline-flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3.5 py-1.5 text-xs font-bold text-indigo-300">
-          <ShieldCheck size={15} className="text-cyan-400 shrink-0" />
-          <span>Secure Student Workspace</span>
-        </div>
-      </div>
-
-      {/* GCET Circular Crest / Emblem Lockup matching Reference Image */}
-      <div className="mb-5 flex flex-col items-center justify-center text-center">
-        <div className="relative flex size-20 items-center justify-center rounded-full bg-gradient-to-br from-indigo-900/60 via-[#0B1120] to-cyan-900/40 p-2 shadow-xl border border-indigo-500/30 mb-3 group">
-          <div className="absolute inset-0 rounded-full bg-indigo-500/10 blur-md pointer-events-none" />
+    <div className="w-full max-w-[420px] rounded-3xl border border-gray-800/80 bg-[#0A1022]/95 p-6 sm:p-8 shadow-2xl backdrop-blur-2xl relative min-w-0">
+      {/* GCET Golden Circular Crest / Emblem Lockup (Exact Reference Image) */}
+      <div className="mb-6 flex flex-col items-center justify-center text-center">
+        <div className="relative flex size-24 items-center justify-center rounded-full bg-gradient-to-br from-amber-500/20 via-[#0B1124] to-indigo-900/40 p-2 shadow-2xl border-2 border-amber-400/40 mb-3.5 group">
+          <div className="absolute inset-0 rounded-full bg-amber-400/10 blur-md pointer-events-none" />
           <img
             src={gcetLogoImg}
             alt="GCET Crest"
-            className="size-12 object-contain drop-shadow-[0_0_12px_rgba(99,102,241,0.5)] relative z-10"
+            className="size-14 object-contain filter drop-shadow-[0_0_14px_rgba(245,158,11,0.5)] relative z-10"
           />
         </div>
-        <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Welcome Back</h2>
-        <p className="mt-1 text-xs sm:text-sm text-gray-400 font-medium">
-          Sign in to your GCET AI Assistant account
+
+        <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+          GCET Student Assistant
+        </h2>
+        <p className="mt-1 text-xs font-semibold text-gray-400">
+          AI Powered. Student Focused. GCET Proud.
         </p>
+        <div className="mt-2.5 h-0.5 w-16 bg-gradient-to-r from-amber-400 to-amber-500 rounded-full" />
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
@@ -188,7 +184,7 @@ export default function LoginForm() {
               placeholder="Enter your email"
               autoComplete="email"
               aria-invalid={Boolean(errors.email)}
-              className="h-12 w-full rounded-2xl border border-gray-800 bg-[#070A14] pl-11 pr-4 text-sm text-white outline-none transition duration-200 placeholder:text-gray-500 focus:border-indigo-500/70 focus:ring-2 focus:ring-indigo-500/20 aria-invalid:border-rose-500/60"
+              className="h-12 w-full rounded-2xl border border-gray-800 bg-[#060A16] pl-11 pr-4 text-sm text-white outline-none transition duration-200 placeholder:text-gray-500 focus:border-indigo-500/70 focus:ring-2 focus:ring-indigo-500/20 aria-invalid:border-rose-500/60"
               {...register("email")}
             />
           </div>
@@ -213,7 +209,7 @@ export default function LoginForm() {
               placeholder="Enter your password"
               autoComplete="current-password"
               aria-invalid={Boolean(errors.password)}
-              className="h-12 w-full rounded-2xl border border-gray-800 bg-[#070A14] pl-11 pr-11 text-sm text-white outline-none transition duration-200 placeholder:text-gray-500 focus:border-indigo-500/70 focus:ring-2 focus:ring-indigo-500/20 aria-invalid:border-rose-500/60"
+              className="h-12 w-full rounded-2xl border border-gray-800 bg-[#060A16] pl-11 pr-11 text-sm text-white outline-none transition duration-200 placeholder:text-gray-500 focus:border-indigo-500/70 focus:ring-2 focus:ring-indigo-500/20 aria-invalid:border-rose-500/60"
               {...register("password")}
             />
             <button
@@ -239,7 +235,7 @@ export default function LoginForm() {
               type="checkbox"
               checked={rememberMe}
               onChange={(e) => setRememberMe(e.target.checked)}
-              className="size-4 rounded border-gray-800 bg-[#070A14] text-indigo-600 focus:ring-indigo-500/20 accent-indigo-600"
+              className="size-4 rounded border-gray-800 bg-[#060A16] text-indigo-600 focus:ring-indigo-500/20 accent-indigo-600"
             />
             <span className="text-xs font-medium text-gray-300">Remember me</span>
           </label>
@@ -256,16 +252,16 @@ export default function LoginForm() {
         <button
           type="submit"
           disabled={loginMutation.isPending || googleLoading}
-          className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 px-4 text-sm font-extrabold text-white shadow-lg shadow-indigo-600/30 transition-all duration-200 hover:from-indigo-500 hover:to-cyan-400 disabled:cursor-not-allowed disabled:opacity-70 cursor-pointer mt-3"
+          className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 text-sm font-extrabold text-white shadow-lg shadow-indigo-600/30 transition-all duration-200 hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-70 cursor-pointer mt-3"
         >
           {loginMutation.isPending ? (
             <>
               <LoaderCircle className="animate-spin text-white" size={18} />
-              <span>Signing in...</span>
+              <span>Logging in...</span>
             </>
           ) : (
             <>
-              <span>Sign in</span>
+              <span>Login</span>
               <ArrowRight size={18} />
             </>
           )}
@@ -274,7 +270,7 @@ export default function LoginForm() {
         {/* Divider */}
         <div className="relative my-4 flex items-center justify-center">
           <div className="w-full border-t border-gray-800/80" />
-          <span className="absolute bg-[#0B1120] px-3 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+          <span className="absolute bg-[#0A1022] px-3 text-[11px] font-bold uppercase tracking-wider text-gray-400">
             or continue with
           </span>
         </div>
@@ -314,7 +310,7 @@ export default function LoginForm() {
 
       {/* Registration Footer Link */}
       <div className="mt-6 text-center text-xs text-gray-400 font-medium">
-        Don't have an account?{" "}
+        New to GCET Assistant?{" "}
         <Link
           to="/register"
           className="font-bold text-indigo-400 hover:text-indigo-300 transition"
