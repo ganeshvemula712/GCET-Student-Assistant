@@ -127,9 +127,9 @@ function MessageBubble({
                     <p className="text-[10px] text-gray-400">
                       {message?.mode === "retrieval_unavailable" || (content && content.includes("retrieval is temporarily unavailable"))
                         ? "Retrieval Service Unavailable"
-                        : message?.mode === "knowledge_unavailable"
+                        : message?.mode === "knowledge_unavailable" || (content && content.includes("not available in the current GCET Knowledge Base"))
                         ? "Knowledge Base Unavailable"
-                        : normalizedSources.length > 0
+                        : message?.mode === "rag" || normalizedSources.length > 0
                         ? "RAG Knowledge Engine"
                         : "General Knowledge AI"}
                     </p>
