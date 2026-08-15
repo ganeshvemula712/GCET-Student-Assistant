@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://gcet-student-assistant-frontend.onrender.com/sitemap.xml
