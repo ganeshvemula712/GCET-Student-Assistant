@@ -6,7 +6,8 @@ export function useUploadDocument() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ file, supersedesId }) => documentService.uploadDocument(file, supersedesId),
+    mutationFn: ({ file, supersedesId, category, tags }) =>
+      documentService.uploadDocument(file, supersedesId, category, tags),
 
     onSuccess: (data) => {
       toast.success(data?.message || "Document uploaded and indexed successfully.");

@@ -1,10 +1,21 @@
 import { useState, useRef, useEffect } from "react";
-import { UploadCloud, AlertCircle, LoaderCircle, X, RefreshCw } from "lucide-react";
+import { UploadCloud, AlertCircle, LoaderCircle, X, RefreshCw, Tag, Folder } from "lucide-react";
 import { toast } from "sonner";
 import { formatErrorMessage } from "@/utils/error";
 import StatusTimeline from "./StatusTimeline";
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
+
+const CATEGORY_OPTIONS = [
+  "Academic Regulations",
+  "Course Syllabus",
+  "Placements",
+  "Timetables",
+  "Examinations",
+  "Attendance",
+  "Notices & Circulars",
+  "General Academic",
+];
 
 export default function UploadDropzone({ uploadMutation, existingDocuments = [] }) {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -13,6 +24,8 @@ export default function UploadDropzone({ uploadMutation, existingDocuments = [] 
   const [errorMsg, setErrorMsg] = useState("");
   const [updateMode, setUpdateMode] = useState(false);
   const [selectedSupersedesId, setSelectedSupersedesId] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("General Academic");
+  const [inputTags, setInputTags] = useState("");
   const inputRef = useRef(null);
 
   // Simulate pipeline step advancement during upload mutation
@@ -61,22 +74,26 @@ export default function UploadDropzone({ uploadMutation, existingDocuments = [] 
     setCurrentFile(file);
     const supersedesId = updateMode && selectedSupersedesId ? selectedSupersedesId : null;
 
-    uploadMutation.mutate({ file, supersedesId }, {
-      onSuccess: (data) => {
-        toast.success(data?.message || `"${file.name}" uploaded and indexed successfully into ChromaDB!`);
-        setTimeout(() => {
-          setCurrentFile(null);
-          setPipelineStep(1);
-          setUpdateMode(false);
-          setSelectedSupersedesId("");
-        }, 3000);
-      },
-      onError: (err) => {
-        const msg = formatErrorMessage(err, "Failed to upload document.");
-        setErrorMsg(msg);
-        toast.error(msg);
-      },
-    });
+    uploadMutation.mutate(
+      { file, supersedesId, category: selectedCategory, tags: inputTags },
+      {
+        onSuccess: (data) => {
+          toast.success(data?.message || `"${file.name}" uploaded and indexed successfully into ChromaDB!`);
+          setTimeout(() => {
+            setCurrentFile(null);
+            setPipelineStep(1);
+            setUpdateMode(false);
+            setSelectedSupersedesId("");
+            setInputTags("");
+          }, 3000);
+        },
+        onError: (err) => {
+          const msg = formatErrorMessage(err, "Failed to upload document.");
+          setErrorMsg(msg);
+          toast.error(msg);
+        },
+      }
+    );
   }
 
   function handleDrop(e) {
@@ -94,50 +111,90 @@ export default function UploadDropzone({ uploadMutation, existingDocuments = [] 
 
   return (
     <div className="w-full space-y-3">
-      {existingDocuments.length > 0 && !uploadMutation.isPending && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-800 bg-[#0f172a]/80 px-4 py-2 text-xs text-gray-300 backdrop-blur-sm">
-          <div className="flex items-center gap-2">
-            <RefreshCw size={14} className="text-cyan-400" />
-            <span className="font-semibold text-white">Upload Mode:</span>
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input
-                type="radio"
-                name="upload_mode"
-                checked={!updateMode}
-                onChange={() => { setUpdateMode(false); setSelectedSupersedesId(""); }}
-                className="text-emerald-500 focus:ring-0"
-              />
-              <span>New Document</span>
-            </label>
-            <span className="text-gray-600">•</span>
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input
-                type="radio"
-                name="upload_mode"
-                checked={updateMode}
-                onChange={() => setUpdateMode(true)}
-                className="text-emerald-500 focus:ring-0"
-              />
-              <span className="text-amber-300 font-medium">Update Existing Document (Version bump)</span>
-            </label>
-          </div>
-
-          {updateMode && (
-            <select
-              value={selectedSupersedesId}
-              onChange={(e) => setSelectedSupersedesId(e.target.value)}
-              className="rounded-xl border border-amber-500/30 bg-gray-900 px-3 py-1 text-xs text-amber-200 outline-none focus:border-amber-400"
-            >
-              <option value="">Select document to replace...</option>
-              {existingDocuments.map((doc) => (
-                <option key={doc.document_id} value={doc.document_id}>
-                  {doc.filename} (v{doc.version || 1})
-                </option>
-              ))}
-            </select>
-          )}
+      {/* Upload Settings: Category, Tags, and Versioning Mode */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 rounded-2xl border border-gray-800 bg-[#0f172a]/90 p-3.5 backdrop-blur-sm">
+        {/* Category Selector */}
+        <div className="flex flex-col space-y-1">
+          <label className="text-[11px] font-bold text-gray-300 flex items-center gap-1.5 uppercase tracking-wider">
+            <Folder size={13} className="text-indigo-400" />
+            <span>Document Category</span>
+          </label>
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            disabled={uploadMutation.isPending}
+            className="h-9 w-full rounded-xl border border-gray-800 bg-gray-900 px-3 text-xs text-white outline-none focus:border-indigo-500/70 focus:ring-1 focus:ring-indigo-500/30"
+          >
+            {CATEGORY_OPTIONS.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
+          </select>
         </div>
-      )}
+
+        {/* Tags Input */}
+        <div className="flex flex-col space-y-1">
+          <label className="text-[11px] font-bold text-gray-300 flex items-center gap-1.5 uppercase tracking-wider">
+            <Tag size={13} className="text-cyan-400" />
+            <span>Optional Indexing Tags</span>
+          </label>
+          <input
+            type="text"
+            placeholder="e.g. JNTUH, R22, CSE, Regulations"
+            value={inputTags}
+            onChange={(e) => setInputTags(e.target.value)}
+            disabled={uploadMutation.isPending}
+            className="h-9 w-full rounded-xl border border-gray-800 bg-gray-900 px-3 text-xs text-white placeholder-gray-500 outline-none focus:border-cyan-500/70 focus:ring-1 focus:ring-cyan-500/30"
+          />
+        </div>
+
+        {/* Update Mode / Versioning toggle */}
+        {existingDocuments.length > 0 && !uploadMutation.isPending && (
+          <div className="md:col-span-2 pt-1.5 flex flex-wrap items-center justify-between gap-3 border-t border-gray-800/60 text-xs text-gray-300">
+            <div className="flex items-center gap-2">
+              <RefreshCw size={14} className="text-amber-400" />
+              <span className="font-semibold text-white">Upload Mode:</span>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name="upload_mode"
+                  checked={!updateMode}
+                  onChange={() => { setUpdateMode(false); setSelectedSupersedesId(""); }}
+                  className="text-indigo-500 focus:ring-0"
+                />
+                <span>New Document</span>
+              </label>
+              <span className="text-gray-600">•</span>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name="upload_mode"
+                  checked={updateMode}
+                  onChange={() => setUpdateMode(true)}
+                  className="text-indigo-500 focus:ring-0"
+                />
+                <span className="text-amber-300 font-medium">Update Existing Document (Version bump)</span>
+              </label>
+            </div>
+
+            {updateMode && (
+              <select
+                value={selectedSupersedesId}
+                onChange={(e) => setSelectedSupersedesId(e.target.value)}
+                className="h-8 rounded-xl border border-amber-500/30 bg-gray-900 px-3 text-xs text-amber-200 outline-none focus:border-amber-400"
+              >
+                <option value="">Select document to replace...</option>
+                {existingDocuments.map((doc) => (
+                  <option key={doc.document_id} value={doc.document_id}>
+                    {doc.filename} (v{doc.version || 1})
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
+      </div>
 
       <div
         onDragOver={(e) => {
@@ -149,8 +206,8 @@ export default function UploadDropzone({ uploadMutation, existingDocuments = [] 
         onClick={() => !uploadMutation.isPending && inputRef.current?.click()}
         className={`group relative flex cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed p-7 text-center transition-all duration-300 ${
           isDragOver
-            ? "border-emerald-500 bg-emerald-500/10 shadow-2xl scale-[1.01]"
-            : "border-gray-800 bg-[#111827] hover:border-emerald-500/40 hover:bg-[#151e30]"
+            ? "border-indigo-500 bg-indigo-500/10 shadow-2xl scale-[1.01]"
+            : "border-gray-800 bg-[#111827] hover:border-indigo-500/40 hover:bg-[#151e30]"
         }`}
       >
         <input
@@ -164,17 +221,18 @@ export default function UploadDropzone({ uploadMutation, existingDocuments = [] 
 
         {uploadMutation.isPending ? (
           <div className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-            <LoaderCircle size={44} className="mx-auto mb-3 animate-spin text-emerald-400" />
+            <LoaderCircle size={44} className="mx-auto mb-3 animate-spin text-indigo-400" />
             <h3 className="text-base font-bold text-white">Indexing "{currentFile?.name}"</h3>
-            <p className="mt-1 text-xs text-gray-400">Processing document chunking and vector embeddings...</p>
+            <p className="mt-1 text-xs text-indigo-300 font-semibold">Categorized as "{selectedCategory}"</p>
+            <p className="mt-0.5 text-xs text-gray-400">Processing document chunking and vector embeddings...</p>
             <StatusTimeline currentStep={pipelineStep} />
           </div>
         ) : (
           <div className="flex flex-col items-center">
-            <div className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 text-emerald-400 border border-emerald-500/30 group-hover:scale-110 transition-transform">
+            <div className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 text-indigo-400 border border-indigo-500/30 group-hover:scale-110 transition-transform">
               <UploadCloud size={28} />
             </div>
-            <h3 className="text-base font-bold text-white group-hover:text-emerald-400 transition-colors">
+            <h3 className="text-base font-bold text-white group-hover:text-indigo-400 transition-colors">
               {updateMode ? "Upload Updated Document Version" : "Upload Knowledge Base Document"}
             </h3>
             <p className="mt-1 text-xs text-gray-400 max-w-sm">

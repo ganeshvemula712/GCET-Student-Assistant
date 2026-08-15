@@ -2,9 +2,10 @@ from hashlib import sha256
 from io import BytesIO
 
 from fastapi import HTTPException, UploadFile
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from backend.app.models.document import Document
+from backend.app.models.document import Document, DEFAULT_CATEGORY, VALID_CATEGORIES
 from backend.app.services.embeddings import generate_embeddings
 from backend.app.services.text_processing import chunk_text
 from backend.app.services.gemini import client as gemini_client
@@ -16,10 +17,25 @@ from backend.app.services.vector_store import (
 from google.genai import types
 
 
+def normalize_tags(tags_input: str | None) -> str:
+    if not tags_input:
+        return ""
+    raw_tags = [t.strip() for t in tags_input.split(",")]
+    seen = set()
+    clean_tags = []
+    for t in raw_tags:
+        if t and t.lower() not in seen:
+            seen.add(t.lower())
+            clean_tags.append(t)
+    return ", ".join(clean_tags)
+
+
 async def process_document(
     file: UploadFile,
     db: Session,
     supersedes_id: str | None = None,
+    category: str | None = None,
+    tags: str | None = None,
 ) -> dict:
     filename_lower = file.filename.lower()
     allowed_extensions = (".pdf", ".docx", ".doc", ".jpg", ".jpeg", ".png")
@@ -29,6 +45,16 @@ async def process_document(
             status_code=400,
             detail="Unsupported file format. Supported formats: PDF, DOCX, DOC, JPG, JPEG, PNG.",
         )
+
+    # Category Validation & Tag Normalization
+    category_clean = (category or "").strip()
+    if category_clean and category_clean not in VALID_CATEGORIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid category '{category_clean}'. Supported categories: {', '.join(VALID_CATEGORIES)}",
+        )
+    final_category = category_clean if category_clean else DEFAULT_CATEGORY
+    final_tags = normalize_tags(tags)
 
     # Read uploaded file
     content = await file.read()
@@ -186,6 +212,8 @@ async def process_document(
         for chunk in page_chunks:
             chunk["metadata"]["version"] = new_version
             chunk["metadata"]["is_active"] = True
+            chunk["metadata"]["category"] = final_category
+            chunk["metadata"]["tags"] = final_tags
             all_chunks.append(chunk)
 
     if not all_chunks:
@@ -226,6 +254,8 @@ async def process_document(
         version=new_version,
         is_active=True,
         supersedes_id=supersedes_id,
+        category=final_category,
+        tags=final_tags,
     )
 
     try:
@@ -251,15 +281,30 @@ async def process_document(
         "version": new_document.version,
         "is_active": new_document.is_active,
         "supersedes_id": new_document.supersedes_id,
+        "category": new_document.category or DEFAULT_CATEGORY,
+        "tags": new_document.tags or "",
         "uploaded_at": new_document.uploaded_at,
-        "message": f"Document '{file.filename}' (v{new_version}) processed and indexed successfully into ChromaDB!",
+        "message": f"Document '{file.filename}' (v{new_version}) categorized as '{final_category}' processed and indexed successfully into ChromaDB!",
     }
 
 
 def get_documents(
     db: Session,
+    category: str | None = None,
 ) -> list[Document]:
-    return db.query(Document).order_by(Document.uploaded_at.desc()).all()
+    query = db.query(Document)
+    if category:
+        cat_clean = category.strip()
+        if cat_clean.lower() == DEFAULT_CATEGORY.lower():
+            query = query.filter(
+                or_(
+                    Document.category.ilike(cat_clean),
+                    Document.category.is_(None),
+                )
+            )
+        else:
+            query = query.filter(Document.category.ilike(cat_clean))
+    return query.order_by(Document.uploaded_at.desc()).all()
 
 
 def remove_document(

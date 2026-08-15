@@ -6,6 +6,19 @@ from sqlalchemy.orm import Mapped, mapped_column
 from backend.app.core.database import Base
 
 
+VALID_CATEGORIES = [
+    "Academic Regulations",
+    "Course Syllabus",
+    "Placements",
+    "Timetables",
+    "Examinations",
+    "Attendance",
+    "Notices & Circulars",
+    "General Academic",
+]
+DEFAULT_CATEGORY = "General Academic"
+
+
 class Document(Base):
 
     __tablename__ = "documents"
@@ -59,6 +72,18 @@ class Document(Base):
     supersedes_id: Mapped[str] = mapped_column(
         String,
         nullable=True,
+    )
+
+    category: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+        default=DEFAULT_CATEGORY,
+    )
+
+    tags: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+        default="",
     )
 
     uploaded_at: Mapped[datetime] = mapped_column(

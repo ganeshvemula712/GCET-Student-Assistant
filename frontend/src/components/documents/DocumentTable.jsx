@@ -123,6 +123,8 @@ export default function DocumentTable({ documents = [], onInspect, onDelete }) {
             <thead className="border-b border-gray-800 bg-gray-900/60 font-bold uppercase tracking-wider text-gray-400">
               <tr>
                 <th className="p-4">Filename</th>
+                <th className="p-4">Category</th>
+                <th className="p-4">Tags</th>
                 <th className="p-4">Type</th>
                 <th className="p-4">Version</th>
                 <th className="p-4">Pages</th>
@@ -135,11 +137,32 @@ export default function DocumentTable({ documents = [], onInspect, onDelete }) {
             <tbody className="divide-y divide-gray-800/60">
               {filteredDocuments.map((doc) => {
                 const ext = doc.filename?.split(".").pop()?.toUpperCase() || "PDF";
+                const catName = doc.category || "General Academic";
+                const tagList = doc.tags ? doc.tags.split(",").map((t) => t.strip ? t.strip() : t.trim()).filter(Boolean) : [];
+
                 return (
                 <tr key={doc.document_id} className="transition hover:bg-gray-800/40">
                   <td className="p-4 font-bold text-white flex items-center gap-2">
-                    <FileText size={16} className="text-emerald-400 shrink-0" />
+                    <FileText size={16} className="text-indigo-400 shrink-0" />
                     <span className="truncate max-w-xs">{doc.filename}</span>
+                  </td>
+                  <td className="p-4">
+                    <span className="rounded-full bg-indigo-500/15 border border-indigo-500/30 px-2.5 py-1 text-[11px] font-bold text-indigo-300 whitespace-nowrap">
+                      {catName}
+                    </span>
+                  </td>
+                  <td className="p-4">
+                    {tagList.length > 0 ? (
+                      <div className="flex flex-wrap gap-1 max-w-[180px]">
+                        {tagList.map((tag) => (
+                          <span key={tag} className="rounded-md bg-cyan-500/10 border border-cyan-500/20 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300 truncate max-w-[80px]">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-gray-500 text-[11px]">—</span>
+                    )}
                   </td>
                   <td className="p-4">
                     <span className="rounded-md bg-gray-800 border border-gray-700 px-2 py-0.5 text-[10px] font-bold text-gray-300">

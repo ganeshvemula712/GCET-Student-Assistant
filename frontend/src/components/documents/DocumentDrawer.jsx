@@ -94,13 +94,37 @@ export default function DocumentDrawer({ open, document, onClose, onDelete }) {
               </div>
             </div>
 
+            {/* Category & Tags Section */}
+            <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/5 p-4 space-y-2.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-400">Category:</span>
+                <span className="rounded-full bg-indigo-500/15 border border-indigo-500/30 px-2.5 py-0.5 text-xs font-bold text-indigo-300">
+                  {document.category || "General Academic"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-400">Indexing Tags:</span>
+                {document.tags ? (
+                  <div className="flex flex-wrap gap-1 justify-end max-w-[200px]">
+                    {document.tags.split(",").map((t) => t.trim()).filter(Boolean).map((tag) => (
+                      <span key={tag} className="rounded-md bg-cyan-500/10 border border-cyan-500/20 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-gray-500">—</span>
+                )}
+              </div>
+            </div>
+
             {/* Chunks Overview */}
             <div>
               <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
                 Knowledge Base Chunks Summary
               </h4>
               <p className="text-xs leading-relaxed text-gray-300 rounded-2xl border border-gray-800 bg-gray-950 p-4">
-                This document has been partitioned into {chunks} text chunk(s) stored as 1,536-dimensional embeddings for high-precision semantic search query matching during student chat sessions.
+                This document has been partitioned into {chunks} text chunk(s) stored as vector embeddings for high-precision semantic search query matching during student chat sessions.
               </p>
             </div>
           </div>
