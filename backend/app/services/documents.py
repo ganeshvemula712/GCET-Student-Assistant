@@ -208,6 +208,8 @@ async def process_document(
             document_id=document_id,
             chunk_size=1000,
             chunk_overlap=200,
+            category=final_category,
+            tags=final_tags,
         )
         for chunk in page_chunks:
             chunk["metadata"]["version"] = new_version

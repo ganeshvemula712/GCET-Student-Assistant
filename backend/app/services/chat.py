@@ -85,7 +85,7 @@ def process_chat(
         try:
             retrieved_chunks = retrieve_relevant_chunks(
                 question=request.question,
-                n_results=4,
+                n_results=6,
             )
         except RetrievalServiceError:
             service_unavailable_msg = (

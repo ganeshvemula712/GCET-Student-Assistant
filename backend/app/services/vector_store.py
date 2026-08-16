@@ -47,6 +47,7 @@ def store_chunks(
 def search_chunks(
     query_embedding: list[float],
     n_results: int = 3,
+    query_text: str | None = None,
 ) -> list[dict]:
 
     coll = get_collection()
@@ -81,16 +82,29 @@ def search_chunks(
 
     retrieved_chunks = []
 
+    q_lower = query_text.lower().strip() if query_text else ""
+
     for document, metadata, distance in zip(
         documents[0],
         metadatas[0],
         distances[0],
     ):
+        final_dist = distance
+        if q_lower and metadata and metadata.get("filename"):
+            fname_lower = metadata["filename"].lower()
+            # If query explicitly matches filename terms (e.g. aiml, ds, timetable, calendar, ar25, 2yr/1sem)
+            fname_tokens = [t for t in fname_lower.replace("-", " ").replace("_", " ").replace(".", " ").split() if len(t) > 1]
+            matched_count = sum(1 for tok in fname_tokens if tok in q_lower)
+            if matched_count >= 2:
+                final_dist = min(final_dist, 0.45)
+            elif matched_count == 1 and any(k in q_lower for k in ("table", "timetable", "schedule", "calendar", "regulations", "aiml", "ds")):
+                final_dist = min(final_dist, 0.65)
+
         retrieved_chunks.append(
             {
                 "text": document,
                 "metadata": metadata,
-                "distance": distance,
+                "distance": final_dist,
             }
         )
 

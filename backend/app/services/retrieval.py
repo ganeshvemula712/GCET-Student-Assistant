@@ -28,6 +28,7 @@ def retrieve_relevant_chunks(
         relevant_chunks = search_chunks(
             query_embedding=query_embedding,
             n_results=n_results,
+            query_text=question,
         )
         return relevant_chunks
 

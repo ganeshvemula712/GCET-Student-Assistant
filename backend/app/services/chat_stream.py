@@ -148,7 +148,7 @@ async def stream_chat(
             try:
                 retrieved = retrieve_relevant_chunks(
                     question=search_query,
-                    n_results=4,
+                    n_results=6,
                 )
                 retrieval_failed = False
             except RetrievalServiceError as ret_err:

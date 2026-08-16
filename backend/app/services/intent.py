@@ -10,7 +10,8 @@ DOCUMENT_EXPLICIT_PATTERNS = [
     r"\bds_?ar25\b",
     r"\bar25\b",
     r"\bb\.?tech\b",
-    r"\b(iv|iii|ii|i|4th|3rd|2nd|1st)\s*(yr|year)?\s*(i|ii|1st|2nd)?\s*(sem|semester)?\s*(ds)?\s*(time\s*table|timetable|schedule)\b",
+    r"\b(iv|iii|ii|i|4th|3rd|2nd|1st)\s*(yr|year)?\s*(i|ii|1st|2nd|1sem|2sem)?\s*(sem|semester)?\s*(ds|aiml|cse|ece|eee|mech|civil)?\s*(a|b|c|d|e)?\s*(section|sec|tm)?\s*(time\s*table|timetable|schedule)?\b",
+    r"\b(aiml|ds|cse|ece|eee|mech)\s*[-_]?\s*(a|b|c|d)\b",
     r"\bsummarize\s+the\b",
     r"\bdocument\s+(says|mentions|states|contains)\b",
 ]
