@@ -319,7 +319,14 @@ async def stream_chat(
         t_end = time.perf_counter()
         print(f"[CHAT] Stream completed: total_time={(t_end - t_start)*1000:.1f} ms, mode={'RAG' if is_rag_mode else 'General'}, answer_len={len(answer_text)}")
 
-        if is_rag_mode:
+        is_unavailable_text = answer_text.strip().startswith("The requested information is not available")
+
+        if is_unavailable_text:
+            determined_mode = "knowledge_unavailable"
+            is_rag_mode = False
+            sources = []
+            confidence = 0
+        elif is_rag_mode:
             determined_mode = "rag"
         elif is_explicit_gcet:
             determined_mode = "knowledge_unavailable"
