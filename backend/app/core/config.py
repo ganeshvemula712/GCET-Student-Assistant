@@ -29,7 +29,12 @@ class Settings:
         os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7")
     )
 
-    STORAGE_PROVIDER: str = os.getenv("STORAGE_PROVIDER", "r2")
+    STORAGE_PROVIDER: str = os.getenv("STORAGE_PROVIDER", "supabase")
+    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+    SUPABASE_SECRET_KEY: str = os.getenv("SUPABASE_SECRET_KEY", "")
+    SUPABASE_STORAGE_BUCKET: str = os.getenv("SUPABASE_STORAGE_BUCKET", "gcet-documents")
+
+    # Legacy R2 settings preserved for backward compatibility
     R2_ACCOUNT_ID: str = os.getenv("R2_ACCOUNT_ID", "")
     R2_ACCESS_KEY_ID: str = os.getenv("R2_ACCESS_KEY_ID", "")
     R2_SECRET_ACCESS_KEY: str = os.getenv("R2_SECRET_ACCESS_KEY", "")
@@ -48,6 +53,9 @@ ALGORITHM = settings.ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 REFRESH_TOKEN_EXPIRE_DAYS = settings.REFRESH_TOKEN_EXPIRE_DAYS
 STORAGE_PROVIDER = settings.STORAGE_PROVIDER
+SUPABASE_URL = settings.SUPABASE_URL
+SUPABASE_SECRET_KEY = settings.SUPABASE_SECRET_KEY
+SUPABASE_STORAGE_BUCKET = settings.SUPABASE_STORAGE_BUCKET
 R2_ACCOUNT_ID = settings.R2_ACCOUNT_ID
 R2_ACCESS_KEY_ID = settings.R2_ACCESS_KEY_ID
 R2_SECRET_ACCESS_KEY = settings.R2_SECRET_ACCESS_KEY

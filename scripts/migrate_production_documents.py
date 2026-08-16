@@ -58,9 +58,9 @@ def main():
                     print(f"\n[DRY RUN] Document ID: {doc.document_id}")
                     print(f"          Filename: {doc.filename}")
                     print(f"          Matched Source File: {src_path}")
-                    print(f"          R2 Storage Object Key: {obj_key}")
+                    print(f"          Supabase Storage Object Key: {obj_key}")
                     print(f"          Current ChromaDB Vector Count: {vector_count}")
-                    print(f"          Planned Action: Upload raw source file to R2 & verify vectors")
+                    print(f"          Planned Action: Upload raw source file to Supabase Storage & verify vectors")
                 else:
                     print(f"\n--- Ingesting document: '{doc.filename}' (ID: {doc.document_id[:8]}) ---")
                     with open(src_path, "rb") as f:
