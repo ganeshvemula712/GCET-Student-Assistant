@@ -184,7 +184,7 @@ export default function LoginForm() {
             </div>
             <input
               type="email"
-              placeholder="test@gmail.com"
+              placeholder="student@gcet.edu.in"
               autoComplete="email"
               aria-invalid={Boolean(errors.email)}
               className="h-10 sm:h-11 w-full rounded-2xl border border-indigo-200/20 bg-[#eef2ff] pl-10 pr-4 text-xs sm:text-sm font-medium text-gray-900 outline-none transition duration-200 placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 aria-invalid:border-rose-500/60"
