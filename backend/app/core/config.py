@@ -29,6 +29,14 @@ class Settings:
         os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7")
     )
 
+    STORAGE_PROVIDER: str = os.getenv("STORAGE_PROVIDER", "r2")
+    R2_ACCOUNT_ID: str = os.getenv("R2_ACCOUNT_ID", "")
+    R2_ACCESS_KEY_ID: str = os.getenv("R2_ACCESS_KEY_ID", "")
+    R2_SECRET_ACCESS_KEY: str = os.getenv("R2_SECRET_ACCESS_KEY", "")
+    R2_BUCKET_NAME: str = os.getenv("R2_BUCKET_NAME", "gcet-student-assistant-docs")
+    R2_ENDPOINT_URL: str = os.getenv("R2_ENDPOINT_URL", "")
+
+
 settings = Settings()
 
 # Backward compatibility
@@ -39,3 +47,9 @@ SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = settings.ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 REFRESH_TOKEN_EXPIRE_DAYS = settings.REFRESH_TOKEN_EXPIRE_DAYS
+STORAGE_PROVIDER = settings.STORAGE_PROVIDER
+R2_ACCOUNT_ID = settings.R2_ACCOUNT_ID
+R2_ACCESS_KEY_ID = settings.R2_ACCESS_KEY_ID
+R2_SECRET_ACCESS_KEY = settings.R2_SECRET_ACCESS_KEY
+R2_BUCKET_NAME = settings.R2_BUCKET_NAME
+R2_ENDPOINT_URL = settings.R2_ENDPOINT_URL

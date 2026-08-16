@@ -6,9 +6,14 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from backend.app.models.document import Document, DEFAULT_CATEGORY, VALID_CATEGORIES
-from backend.app.services.embeddings import generate_embeddings
+from backend.app.services.embeddings import generate_embeddings, _cached_query_embedding
 from backend.app.services.text_processing import chunk_text
 from backend.app.services.gemini import client as gemini_client
+from backend.app.services.storage import (
+    delete_file_from_storage,
+    get_storage_key,
+    upload_file_to_storage,
+)
 from backend.app.services.vector_store import (
     delete_document_chunks,
     mark_document_chunks_inactive,
@@ -67,6 +72,15 @@ async def process_document(
 
     # Generate unique document ID
     document_id = sha256(content).hexdigest()
+
+    # Upload raw file bytes to permanent storage (Cloudflare R2 / local fallback)
+    object_key = get_storage_key(document_id, file.filename)
+    storage_ok = upload_file_to_storage(content, object_key)
+    if not storage_ok:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to persist raw file to cloud storage.",
+        )
 
     # Check whether document already exists
     existing_document = (
@@ -306,7 +320,21 @@ def get_documents(
             )
         else:
             query = query.filter(Document.category.ilike(cat_clean))
-    return query.order_by(Document.uploaded_at.desc()).all()
+    docs = query.order_by(Document.uploaded_at.desc()).all()
+
+    # Dynamic status verification against ChromaDB
+    try:
+        coll = get_collection()
+        for doc in docs:
+            if doc.is_active:
+                res = coll.get(where={"document_id": doc.document_id})
+                vector_count = len(res.get("ids", []))
+                if vector_count == 0 and doc.status == "processed":
+                    doc.status = "indexing_required"
+    except Exception:
+        pass
+
+    return docs
 
 
 def remove_document(
@@ -326,10 +354,15 @@ def remove_document(
         )
 
     filename = document.filename
+    object_key = get_storage_key(document_id, filename)
+
     delete_document_chunks(document_id)
+    delete_file_from_storage(object_key)
 
     db.delete(document)
     db.commit()
+
+    _cached_query_embedding.cache_clear()
 
     return {
         "message": "Document deleted successfully",

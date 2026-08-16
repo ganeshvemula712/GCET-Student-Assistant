@@ -32,8 +32,10 @@ from backend.app.routers.user import router as user_router
 from backend.app.routers.dashboard import router as dashboard_router
 from backend.app.routers.messages import router as messages_router
 
+import asyncio
 from backend.app.services.health import run_startup_checks
 from backend.app.services.admin_bootstrap import run_admin_bootstrap
+from backend.app.services.startup import run_async_self_healing
 
 Base.metadata.create_all(bind=engine)
 
@@ -42,6 +44,7 @@ Base.metadata.create_all(bind=engine)
 async def lifespan(app: FastAPI):
     run_startup_checks()
     run_admin_bootstrap()
+    asyncio.create_task(run_async_self_healing())
     yield
 
 
