@@ -408,3 +408,10 @@ async def test_general_query_when_embedding_api_429_still_returns_general_ai(db_
         done_events = [json.loads(e) for e in events if "type" in e and '"done"' in e]
         assert len(done_events) == 1
         assert done_events[0]["mode"] == "general"
+
+
+def test_spelling_normalization_helper():
+    from backend.app.services.vector_store import normalize_query_tokens_for_matching
+    assert normalize_query_tokens_for_matching("when we have Mid 1 exams according to academic calender") == "when we have mid 1 exams according to academic calendar"
+    assert normalize_query_tokens_for_matching("when are Mid 1 exams according to academic calendar") == "when are mid 1 exams according to academic calendar"
+    assert normalize_query_tokens_for_matching("time-table for 4th year") == "timetable for 4th year"

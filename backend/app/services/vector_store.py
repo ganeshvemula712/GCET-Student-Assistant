@@ -44,6 +44,27 @@ def store_chunks(
     )
 
 
+SPELLING_NORM_MAP = {
+    "calender": "calendar",
+    "caleder": "calendar",
+    "timetabl": "timetable",
+    "time-table": "timetable",
+}
+
+
+def normalize_query_tokens_for_matching(query_text: str | None) -> str:
+    """
+    Normalize common spelling variations (e.g. 'calender' -> 'calendar')
+    and year/sem abbreviations so metadata token matching works reliably against filename tokens.
+    """
+    if not query_text:
+        return ""
+    q_lower = query_text.lower().strip()
+    for variant, canonical in SPELLING_NORM_MAP.items():
+        q_lower = q_lower.replace(variant, canonical)
+    return q_lower
+
+
 def search_chunks(
     query_embedding: list[float],
     n_results: int = 3,
@@ -82,7 +103,7 @@ def search_chunks(
 
     retrieved_chunks = []
 
-    q_lower = query_text.lower().strip() if query_text else ""
+    q_lower = normalize_query_tokens_for_matching(query_text)
 
     for document, metadata, distance in zip(
         documents[0],
