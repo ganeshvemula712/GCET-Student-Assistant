@@ -34,6 +34,7 @@ class Settings:
     SUPABASE_SECRET_KEY: str = os.getenv("SUPABASE_SECRET_KEY", "")
     SUPABASE_STORAGE_BUCKET: str = os.getenv("SUPABASE_STORAGE_BUCKET", "gcet-documents")
     OCR_BATCH_SIZE: int = int(os.getenv("OCR_BATCH_SIZE", "4"))
+    SELF_HEALING_INTERVAL_MINUTES: int = int(os.getenv("SELF_HEALING_INTERVAL_MINUTES", "60"))
 
     # Legacy R2 settings preserved for backward compatibility
     R2_ACCOUNT_ID: str = os.getenv("R2_ACCOUNT_ID", "")
@@ -58,6 +59,7 @@ SUPABASE_URL = settings.SUPABASE_URL
 SUPABASE_SECRET_KEY = settings.SUPABASE_SECRET_KEY
 SUPABASE_STORAGE_BUCKET = settings.SUPABASE_STORAGE_BUCKET
 OCR_BATCH_SIZE = settings.OCR_BATCH_SIZE
+SELF_HEALING_INTERVAL_MINUTES = settings.SELF_HEALING_INTERVAL_MINUTES
 R2_ACCOUNT_ID = settings.R2_ACCOUNT_ID
 R2_ACCESS_KEY_ID = settings.R2_ACCESS_KEY_ID
 R2_SECRET_ACCESS_KEY = settings.R2_SECRET_ACCESS_KEY

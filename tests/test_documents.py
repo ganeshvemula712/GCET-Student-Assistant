@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.app.models.document import Document
 
@@ -31,7 +31,12 @@ def test_get_all_documents_with_data(
     db_session.commit()
     db_session.refresh(document)
 
-    response = admin_client.get("/documents")
+    with patch("backend.app.services.documents.get_collection") as mock_coll:
+        mock_instance = MagicMock()
+        mock_instance.get.return_value = {"ids": [f"id_{i}" for i in range(25)]}
+        mock_coll.return_value = mock_instance
+
+        response = admin_client.get("/documents")
 
     assert response.status_code == 200
 

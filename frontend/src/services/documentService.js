@@ -43,6 +43,12 @@ const documentService = {
 
     return response.data;
   },
+
+  // Re-index a document from cloud storage
+  async reindexDocument(documentId) {
+    const response = await api.post(`/documents/${documentId}/reindex`);
+    return response.data;
+  },
 };
 
 export default documentService;

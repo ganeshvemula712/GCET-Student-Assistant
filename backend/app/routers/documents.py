@@ -13,6 +13,7 @@ from backend.app.schemas.document import (
 from backend.app.services.documents import (
     get_documents,
     process_document,
+    reindex_document,
     remove_document,
 )
 
@@ -55,6 +56,20 @@ def get_all_documents(
     db: Session = Depends(get_db),
 ):
     return get_documents(db=db, category=category)
+
+
+@router.post(
+    "/{document_id}/reindex",
+)
+def reindex_document_endpoint(
+    document_id: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return reindex_document(
+        document_id=document_id,
+        db=db,
+    )
 
 
 @router.delete(

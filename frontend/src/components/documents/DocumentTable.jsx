@@ -1,8 +1,11 @@
 import { useState, useMemo } from "react";
-import { Search, Filter, ArrowUpDown, LayoutGrid, List, FileText, Trash2, Eye, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Search, Filter, ArrowUpDown, LayoutGrid, List, FileText, Trash2, Eye, CheckCircle2, AlertTriangle, RefreshCw } from "lucide-react";
 import DocumentCard from "./DocumentCard";
+import { useReindexDocument } from "@/hooks/useReindexDocument";
 
-export default function DocumentTable({ documents = [], onInspect, onDelete }) {
+export default function DocumentTable({ documents = [], onInspect, onDelete, isAdmin = false }) {
+  const reindexMutation = useReindexDocument();
+  const [reindexingId, setReindexingId] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
@@ -205,6 +208,23 @@ export default function DocumentTable({ documents = [], onInspect, onDelete }) {
                   </td>
                   <td className="p-4 align-middle text-right">
                     <div className="inline-flex items-center gap-2">
+                      {doc.status === "indexing_required" && (
+                        <button
+                          type="button"
+                          disabled={reindexingId === doc.document_id || reindexMutation.isPending}
+                          onClick={() => {
+                            setReindexingId(doc.document_id);
+                            reindexMutation.mutate(doc.document_id, {
+                              onSettled: () => setReindexingId(null),
+                            });
+                          }}
+                          className="inline-flex items-center gap-1 rounded-xl bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition hover:bg-amber-500/20 disabled:opacity-50"
+                          title="Re-index document vectors from Supabase Storage"
+                        >
+                          <RefreshCw size={12} className={reindexingId === doc.document_id ? "animate-spin text-amber-300" : ""} />
+                          <span>{reindexingId === doc.document_id ? "Re-indexing..." : "Re-index"}</span>
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => onInspect?.(doc)}

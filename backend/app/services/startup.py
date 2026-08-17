@@ -11,6 +11,9 @@ from backend.app.services.text_processing import chunk_text
 from backend.app.services.vector_store import get_collection, store_chunks
 from google.genai import types
 
+from sqlalchemy import or_
+from backend.app.core.config import settings
+
 logger = logging.getLogger("uvicorn")
 
 
@@ -18,7 +21,7 @@ def _reindex_document_from_bytes(doc: Document, content: bytes) -> int:
     try:
         page_count, extracted_pages = extract_document_pages(content, doc.filename)
     except GeminiQuotaExhaustedError as quota_err:
-        logger.error(f"[SELF-HEAL] Quota exhausted during document re-indexing: {quota_err}")
+        logger.error(f"[SELF-HEAL] Quota exhausted during document re-indexing for '{doc.filename}': {quota_err}")
         return 0
     except Exception as err:
         logger.error(f"[SELF-HEAL] Extraction failed for '{doc.filename}': {err}")
@@ -55,29 +58,40 @@ def _reindex_document_from_bytes(doc: Document, content: bytes) -> int:
 def sync_chromadb_with_postgres() -> None:
     """
     Self-healing background worker:
-    Scans active PostgreSQL document records against ChromaDB vector storage.
-    If vectors are missing (e.g. after ephemeral disk wipe), downloads source file
-    from Cloudflare R2 storage and re-indexes into ChromaDB automatically.
+    Scans active and indexing_required PostgreSQL document records against ChromaDB vector storage.
+    If vectors are missing (e.g. after ephemeral disk wipe or rate limit reset), downloads source file
+    from Supabase Storage and re-indexes into ChromaDB automatically.
     """
     logger.info("[SELF-HEAL] Starting ChromaDB vector persistence check...")
     db = SessionLocal()
     try:
-        active_docs = db.query(Document).filter(Document.is_active == True).all()
-        logger.info(f"[SELF-HEAL] Found {len(active_docs)} active document records in PostgreSQL.")
+        target_docs = (
+            db.query(Document)
+            .filter(
+                or_(
+                    Document.is_active == True,
+                    Document.status == "indexing_required",
+                )
+            )
+            .all()
+        )
+        logger.info(f"[SELF-HEAL] Found {len(target_docs)} document records to verify in PostgreSQL.")
 
         coll = get_collection()
 
-        for doc in active_docs:
+        for doc in target_docs:
             try:
                 res = coll.get(where={"document_id": doc.document_id})
                 chunk_count = len(res.get("ids", []))
 
                 if chunk_count > 0:
                     logger.info(f"[SELF-HEAL] Document '{doc.filename}' ({doc.document_id[:8]}) verified: {chunk_count} vectors in ChromaDB.")
-                    if doc.status != "processed":
+                    if doc.status != "processed" or doc.is_active is False:
                         doc.status = "processed"
+                        doc.is_active = True
+                        doc.chunk_count = chunk_count
                 else:
-                    logger.warning(f"[SELF-HEAL] Vectors missing for active document '{doc.filename}' ({doc.document_id[:8]}). Healing from storage...")
+                    logger.warning(f"[SELF-HEAL] Vectors missing for document '{doc.filename}' ({doc.document_id[:8]}). Healing from storage...")
                     obj_key = get_storage_key(doc.document_id, doc.filename)
                     content = download_file_from_storage(obj_key)
 
@@ -85,14 +99,19 @@ def sync_chromadb_with_postgres() -> None:
                         new_count = _reindex_document_from_bytes(doc, content)
                         if new_count > 0:
                             doc.status = "processed"
+                            doc.is_active = True
                             doc.chunk_count = new_count
                             logger.info(f"[SELF-HEAL] Successfully restored '{doc.filename}': {new_count} chunks indexed into ChromaDB.")
                         else:
                             doc.status = "indexing_required"
-                            logger.error(f"[SELF-HEAL] Extraction empty for '{doc.filename}'. Status set to indexing_required.")
+                            doc.is_active = False
+                            doc.chunk_count = 0
+                            logger.error(f"[SELF-HEAL] Re-indexing failed or empty for '{doc.filename}'. Status set to indexing_required.")
                     else:
                         doc.status = "indexing_required"
-                        logger.warning(f"[SELF-HEAL] Source file for '{doc.filename}' not found in cloud storage. Marked indexing_required.")
+                        doc.is_active = False
+                        doc.chunk_count = 0
+                        logger.warning(f"[SELF-HEAL] Source file for '{doc.filename}' not found in storage. Marked indexing_required.")
             except Exception as doc_err:
                 logger.error(f"[SELF-HEAL] Error checking/healing document '{doc.filename}': {doc_err}")
 
@@ -107,6 +126,15 @@ def sync_chromadb_with_postgres() -> None:
 
 
 async def run_async_self_healing():
-    """Run self-healing task in background without blocking server startup."""
-    await asyncio.sleep(1)
-    await asyncio.to_thread(sync_chromadb_with_postgres)
+    """Run self-healing task in background with recurring schedule."""
+    interval_seconds = getattr(settings, "SELF_HEALING_INTERVAL_MINUTES", 60) * 60
+    logger.info(f"[SELF-HEAL] Background scheduler started (Interval: {interval_seconds // 60}m).")
+    await asyncio.sleep(2)
+    while True:
+        try:
+            logger.info("[SELF-HEAL CYCLE] Starting scheduled self-healing cycle...")
+            await asyncio.to_thread(sync_chromadb_with_postgres)
+            logger.info("[SELF-HEAL CYCLE] Scheduled self-healing cycle finished.")
+        except Exception as cycle_err:
+            logger.error(f"[SELF-HEAL CYCLE] Error in background cycle: {cycle_err}")
+        await asyncio.sleep(interval_seconds)

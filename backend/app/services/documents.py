@@ -11,11 +11,13 @@ from backend.app.services.text_processing import chunk_text
 from backend.app.services.ocr import extract_document_pages, GeminiQuotaExhaustedError
 from backend.app.services.storage import (
     delete_file_from_storage,
+    download_file_from_storage,
     get_storage_key,
     upload_file_to_storage,
 )
 from backend.app.services.vector_store import (
     delete_document_chunks,
+    get_collection,
     mark_document_chunks_inactive,
     store_chunks,
 )
@@ -236,8 +238,8 @@ async def process_document(
 
 def get_documents(
     db: Session,
-    category: str | None = None,
-) -> list[Document]:
+    category: str | None = Query(None) if False else None,
+) -> list[dict]:
     query = db.query(Document)
     if category:
         cat_clean = category.strip()
@@ -252,19 +254,57 @@ def get_documents(
             query = query.filter(Document.category.ilike(cat_clean))
     docs = query.order_by(Document.uploaded_at.desc()).all()
 
-    # Dynamic status verification against ChromaDB
+    result_docs = []
     try:
         coll = get_collection()
         for doc in docs:
-            if doc.is_active:
+            doc_dict = {
+                "id": doc.id,
+                "document_id": doc.document_id,
+                "filename": doc.filename,
+                "page_count": doc.page_count,
+                "chunk_count": doc.chunk_count,
+                "status": doc.status,
+                "version": doc.version,
+                "is_active": doc.is_active,
+                "supersedes_id": doc.supersedes_id,
+                "category": doc.category or DEFAULT_CATEGORY,
+                "tags": doc.tags or "",
+                "uploaded_at": doc.uploaded_at,
+            }
+            try:
                 res = coll.get(where={"document_id": doc.document_id})
                 vector_count = len(res.get("ids", []))
-                if vector_count == 0 and doc.status == "processed":
-                    doc.status = "indexing_required"
+                if vector_count == 0:
+                    if doc_dict["is_active"] or doc_dict["status"] == "processed":
+                        doc_dict["status"] = "indexing_required"
+                        doc_dict["is_active"] = False
+                    doc_dict["chunk_count"] = 0
+                else:
+                    doc_dict["chunk_count"] = vector_count
+            except Exception:
+                pass
+            result_docs.append(doc_dict)
     except Exception:
-        pass
+        result_docs = [
+            {
+                "id": doc.id,
+                "document_id": doc.document_id,
+                "filename": doc.filename,
+                "page_count": doc.page_count,
+                "chunk_count": doc.chunk_count,
+                "status": doc.status,
+                "version": doc.version,
+                "is_active": doc.is_active,
+                "supersedes_id": doc.supersedes_id,
+                "category": doc.category or DEFAULT_CATEGORY,
+                "tags": doc.tags or "",
+                "uploaded_at": doc.uploaded_at,
+            }
+            for doc in docs
+        ]
 
-    return docs
+    return result_docs
 
 
 def remove_document(
@@ -298,4 +338,111 @@ def remove_document(
         "message": "Document deleted successfully",
         "document_id": document_id,
         "filename": filename,
+    }
+
+
+def reindex_document(
+    document_id: str,
+    db: Session,
+) -> dict:
+    doc = (
+        db.query(Document)
+        .filter(Document.document_id == document_id)
+        .first()
+    )
+    if not doc:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found",
+        )
+
+    object_key = get_storage_key(doc.document_id, doc.filename)
+    content = download_file_from_storage(object_key)
+    if not content:
+        doc.status = "indexing_required"
+        doc.is_active = False
+        db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Original source file for '{doc.filename}' not found in cloud storage",
+        )
+
+    try:
+        page_count, extracted_pages = extract_document_pages(content, doc.filename)
+    except GeminiQuotaExhaustedError as quota_err:
+        doc.status = "indexing_required"
+        doc.is_active = False
+        doc.chunk_count = 0
+        db.commit()
+        raise HTTPException(
+            status_code=429,
+            detail="Document re-indexing could not be completed because the Gemini OCR quota is currently exhausted. Please retry after the quota resets.",
+        )
+    except Exception as parse_err:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to parse document: {str(parse_err)}",
+        )
+
+    all_chunks = []
+    for p_num, p_text in extracted_pages:
+        page_chunks = chunk_text(
+            text=p_text,
+            filename=doc.filename,
+            page_number=p_num,
+            document_id=doc.document_id,
+            chunk_size=1000,
+            chunk_overlap=200,
+            category=doc.category or DEFAULT_CATEGORY,
+            tags=doc.tags or "",
+        )
+        for chunk in page_chunks:
+            chunk["metadata"]["version"] = doc.version or 1
+            chunk["metadata"]["is_active"] = True
+            chunk["metadata"]["category"] = doc.category or DEFAULT_CATEGORY
+            chunk["metadata"]["tags"] = doc.tags or ""
+            all_chunks.append(chunk)
+
+    if not all_chunks:
+        doc.status = "indexing_required"
+        doc.is_active = False
+        doc.chunk_count = 0
+        db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail="No readable text or content extracted from original document",
+        )
+
+    try:
+        texts = [chunk["text"] for chunk in all_chunks]
+        embeddings = generate_embeddings(texts)
+    except Exception as emb_err:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Embedding generation failed: {str(emb_err)}",
+        )
+
+    try:
+        store_chunks(chunks=all_chunks, embeddings=embeddings)
+    except Exception as chroma_err:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to store vectors in ChromaDB: {str(chroma_err)}",
+        )
+
+    new_count = len(all_chunks)
+    doc.status = "processed"
+    doc.is_active = True
+    doc.chunk_count = new_count
+    db.commit()
+
+    _cached_query_embedding.cache_clear()
+
+    return {
+        "message": f"Document '{doc.filename}' re-indexed successfully into ChromaDB!",
+        "document_id": doc.document_id,
+        "filename": doc.filename,
+        "chunk_count": new_count,
+        "status": "processed",
+        "is_active": True,
     }
