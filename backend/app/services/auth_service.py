@@ -69,16 +69,21 @@ def login_user(
         .first()
     )
 
-    if not user:
+    if not user or not user.password_hash:
         raise HTTPException(
             status_code=401,
             detail="Unable to sign in. Check your email and password and try again.",
         )
 
-    if not verify_password(
-        user_login.password,
-        user.password_hash,
-    ):
+    try:
+        is_valid = verify_password(
+            user_login.password,
+            user.password_hash,
+        )
+    except Exception:
+        is_valid = False
+
+    if not is_valid:
         raise HTTPException(
             status_code=401,
             detail="Unable to sign in. Check your email and password and try again.",

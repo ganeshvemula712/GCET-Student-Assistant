@@ -4,6 +4,31 @@
  * ("Objects are not valid as a React child").
  */
 
+function stringifyPayload(payload) {
+  if (!payload) return null;
+  if (typeof payload === "string" && payload.trim()) {
+    return payload.trim();
+  }
+  if (Array.isArray(payload)) {
+    const msgs = payload
+      .map((item) => {
+        if (typeof item === "string") return item.trim();
+        if (item && typeof item === "object") {
+          return item.msg || item.message || item.detail || JSON.stringify(item);
+        }
+        return String(item);
+      })
+      .filter(Boolean);
+    if (msgs.length > 0) return msgs.join(", ");
+  }
+  if (typeof payload === "object") {
+    if (typeof payload.message === "string" && payload.message.trim()) return payload.message.trim();
+    if (typeof payload.detail === "string" && payload.detail.trim()) return payload.detail.trim();
+    if (typeof payload.msg === "string" && payload.msg.trim()) return payload.msg.trim();
+  }
+  return null;
+}
+
 export function formatErrorMessage(
   err,
   fallback = "An unexpected error occurred. Please try again."
@@ -12,49 +37,55 @@ export function formatErrorMessage(
     return fallback;
   }
 
-  // If err is already a primitive string
-  if (typeof err === "string") {
-    return err;
+  if (typeof err === "string" && err.trim()) {
+    return err.trim();
   }
 
-  // Extract error detail/message payload from Axios or standard Error object
-  const data = err?.response?.data;
-  const rawDetail = data?.detail ?? data?.message ?? err?.message;
+  const response = err?.response;
+  const data = response?.data;
 
-  // Case 1: String detail
-  if (typeof rawDetail === "string" && rawDetail.trim()) {
-    return rawDetail;
-  }
+  if (response) {
+    // 1. Try response.data.message
+    const msgPayload = stringifyPayload(data?.message);
+    if (msgPayload) return msgPayload;
 
-  // Case 2: Array of validation errors (e.g. FastAPI 422 Unprocessable Entity)
-  if (Array.isArray(rawDetail)) {
-    const formattedMsgs = rawDetail
-      .map((item) => {
-        if (typeof item === "string") return item;
-        if (item && typeof item === "object") {
-          return item.msg || item.message || JSON.stringify(item);
-        }
-        return String(item);
-      })
-      .filter(Boolean);
+    // 2. Try response.data.detail
+    const detailPayload = stringifyPayload(data?.detail);
+    if (detailPayload) return detailPayload;
 
-    if (formattedMsgs.length > 0) {
-      return formattedMsgs.join(", ");
+    // 3. Try response.data.error
+    const errorPayload = stringifyPayload(data?.error);
+    if (errorPayload) return errorPayload;
+
+    // 4. Status-specific default messages
+    const status = response.status;
+    if (status === 401) {
+      return "Authentication required. Please log in again.";
+    }
+    if (status === 403) {
+      return "You do not have permission to perform this action.";
+    }
+    if (status === 429) {
+      return "Rate limit or quota exceeded. Please try again later.";
+    }
+    if (status >= 500) {
+      return "Server error. Please try again later.";
     }
   }
 
-  // Case 3: Object detail (e.g. { message: "...", detail: "..." })
-  if (typeof rawDetail === "object" && rawDetail !== null) {
-    if (typeof rawDetail.message === "string") return rawDetail.message;
-    if (typeof rawDetail.detail === "string") return rawDetail.detail;
-    if (typeof rawDetail.msg === "string") return rawDetail.msg;
-    return JSON.stringify(rawDetail);
+  // 5. Genuine network error (no response or ERR_NETWORK)
+  if (err?.code === "ERR_NETWORK" || !response) {
+    return "Unable to reach the server. Please check your connection and try again.";
   }
 
-  // Case 4: Network error or missing response
-  if (err?.code === "ERR_NETWORK" || !err?.response) {
-    return "Unable to connect to backend server. Please check your network connection.";
+  // 6. Generic err.message if not Axios generic string
+  if (typeof err?.message === "string" && err.message.trim()) {
+    const m = err.message.trim();
+    if (m !== "Network Error" && !m.startsWith("Request failed with status code")) {
+      return m;
+    }
   }
 
+  // 7. Generic fallback
   return fallback;
 }
