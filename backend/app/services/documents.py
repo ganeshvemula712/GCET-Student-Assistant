@@ -1,3 +1,5 @@
+import gc
+import threading
 from hashlib import sha256
 from io import BytesIO
 
@@ -22,6 +24,27 @@ from backend.app.services.vector_store import (
     store_chunks,
 )
 from google.genai import types
+
+_REINDEXING_IN_PROGRESS = set()
+_REINDEX_LOCK = threading.Lock()
+
+
+def is_reindexing_in_progress(document_id: str) -> bool:
+    with _REINDEX_LOCK:
+        return document_id in _REINDEXING_IN_PROGRESS
+
+
+def acquire_reindex_lock(document_id: str) -> bool:
+    with _REINDEX_LOCK:
+        if document_id in _REINDEXING_IN_PROGRESS:
+            return False
+        _REINDEXING_IN_PROGRESS.add(document_id)
+        return True
+
+
+def release_reindex_lock(document_id: str) -> None:
+    with _REINDEX_LOCK:
+        _REINDEXING_IN_PROGRESS.discard(document_id)
 
 
 def normalize_tags(tags_input: str | None) -> str:
@@ -356,93 +379,105 @@ def reindex_document(
             detail="Document not found",
         )
 
-    object_key = get_storage_key(doc.document_id, doc.filename)
-    content = download_file_from_storage(object_key)
-    if not content:
-        doc.status = "indexing_required"
-        doc.is_active = False
-        db.commit()
+    if not acquire_reindex_lock(document_id):
         raise HTTPException(
-            status_code=400,
-            detail=f"Original source file for '{doc.filename}' not found in cloud storage",
+            status_code=409,
+            detail=f"Document '{doc.filename}' is currently being indexed or self-healed. Please try again shortly.",
         )
 
     try:
-        page_count, extracted_pages = extract_document_pages(content, doc.filename)
-    except GeminiQuotaExhaustedError as quota_err:
-        doc.status = "indexing_required"
-        doc.is_active = False
-        doc.chunk_count = 0
+        object_key = get_storage_key(doc.document_id, doc.filename)
+        content = download_file_from_storage(object_key)
+        if not content:
+            doc.status = "indexing_required"
+            doc.is_active = False
+            db.commit()
+            raise HTTPException(
+                status_code=400,
+                detail=f"Original source file for '{doc.filename}' not found in cloud storage",
+            )
+
+        try:
+            page_count, extracted_pages = extract_document_pages(content, doc.filename)
+        except GeminiQuotaExhaustedError as quota_err:
+            doc.status = "indexing_required"
+            doc.is_active = False
+            doc.chunk_count = 0
+            db.commit()
+            raise HTTPException(
+                status_code=429,
+                detail="Document re-indexing could not be completed because the Gemini OCR quota is currently exhausted. Please retry after the quota resets.",
+            )
+        except Exception as parse_err:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to parse document: {str(parse_err)}",
+            )
+        finally:
+            del content
+
+        all_chunks = []
+        for p_num, p_text in extracted_pages:
+            page_chunks = chunk_text(
+                text=p_text,
+                filename=doc.filename,
+                page_number=p_num,
+                document_id=doc.document_id,
+                chunk_size=1000,
+                chunk_overlap=200,
+                category=doc.category or DEFAULT_CATEGORY,
+                tags=doc.tags or "",
+            )
+            for chunk in page_chunks:
+                chunk["metadata"]["version"] = doc.version or 1
+                chunk["metadata"]["is_active"] = True
+                chunk["metadata"]["category"] = doc.category or DEFAULT_CATEGORY
+                chunk["metadata"]["tags"] = doc.tags or ""
+                all_chunks.append(chunk)
+
+        if not all_chunks:
+            doc.status = "indexing_required"
+            doc.is_active = False
+            doc.chunk_count = 0
+            db.commit()
+            raise HTTPException(
+                status_code=400,
+                detail="No readable text or content extracted from original document",
+            )
+
+        try:
+            texts = [chunk["text"] for chunk in all_chunks]
+            embeddings = generate_embeddings(texts)
+        except Exception as emb_err:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Embedding generation failed: {str(emb_err)}",
+            )
+
+        try:
+            store_chunks(chunks=all_chunks, embeddings=embeddings)
+        except Exception as chroma_err:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to store vectors in ChromaDB: {str(chroma_err)}",
+            )
+
+        new_count = len(all_chunks)
+        doc.status = "processed"
+        doc.is_active = True
+        doc.chunk_count = new_count
         db.commit()
-        raise HTTPException(
-            status_code=429,
-            detail="Document re-indexing could not be completed because the Gemini OCR quota is currently exhausted. Please retry after the quota resets.",
-        )
-    except Exception as parse_err:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Failed to parse document: {str(parse_err)}",
-        )
 
-    all_chunks = []
-    for p_num, p_text in extracted_pages:
-        page_chunks = chunk_text(
-            text=p_text,
-            filename=doc.filename,
-            page_number=p_num,
-            document_id=doc.document_id,
-            chunk_size=1000,
-            chunk_overlap=200,
-            category=doc.category or DEFAULT_CATEGORY,
-            tags=doc.tags or "",
-        )
-        for chunk in page_chunks:
-            chunk["metadata"]["version"] = doc.version or 1
-            chunk["metadata"]["is_active"] = True
-            chunk["metadata"]["category"] = doc.category or DEFAULT_CATEGORY
-            chunk["metadata"]["tags"] = doc.tags or ""
-            all_chunks.append(chunk)
+        _cached_query_embedding.cache_clear()
 
-    if not all_chunks:
-        doc.status = "indexing_required"
-        doc.is_active = False
-        doc.chunk_count = 0
-        db.commit()
-        raise HTTPException(
-            status_code=400,
-            detail="No readable text or content extracted from original document",
-        )
-
-    try:
-        texts = [chunk["text"] for chunk in all_chunks]
-        embeddings = generate_embeddings(texts)
-    except Exception as emb_err:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Embedding generation failed: {str(emb_err)}",
-        )
-
-    try:
-        store_chunks(chunks=all_chunks, embeddings=embeddings)
-    except Exception as chroma_err:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to store vectors in ChromaDB: {str(chroma_err)}",
-        )
-
-    new_count = len(all_chunks)
-    doc.status = "processed"
-    doc.is_active = True
-    doc.chunk_count = new_count
-    db.commit()
-
-    _cached_query_embedding.cache_clear()
-
-    return {
-        "message": f"Document '{doc.filename}' re-indexed successfully into ChromaDB!",
-        "document_id": doc.document_id,
-        "filename": doc.filename,
-        "chunk_count": new_count,
-        "status": "processed",
-        "is_active": True,
-    }
+        return {
+            "message": f"Document '{doc.filename}' re-indexed successfully into ChromaDB!",
+            "document_id": doc.document_id,
+            "filename": doc.filename,
+            "chunk_count": new_count,
+            "status": "processed",
+            "is_active": True,
+        }
+    finally:
+        release_reindex_lock(document_id)
+        gc.collect()

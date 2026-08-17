@@ -45,7 +45,7 @@ def test_scanned_pdf_batches_pages_into_single_gemini_call(monkeypatch):
         p.get_pixmap.return_value = pix
         pages.append(p)
 
-    mock_pdf.__getitem__.side_effect = pages
+    mock_pdf.__getitem__.side_effect = lambda idx: pages[idx]
 
     mock_gemini_res = MagicMock()
     mock_gemini_res.text = "--- PAGE 1 ---\nText 1\n--- PAGE 2 ---\nText 2\n--- PAGE 3 ---\nText 3\n--- PAGE 4 ---\nText 4"

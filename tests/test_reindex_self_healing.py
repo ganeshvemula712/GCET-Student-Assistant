@@ -159,3 +159,31 @@ def test_self_healing_continues_after_one_document_failure(db_session: Session):
         d2 = db_session.query(Document).filter(Document.document_id == "heal_doc_pass_2").first()
         assert d2.status == "processed"
         assert d2.is_active is True
+
+
+def test_concurrent_reindex_lock_rejection(db_session: Session):
+    """Test that concurrent re-indexing on the same document raises 409 Conflict."""
+    from backend.app.services.documents import acquire_reindex_lock, release_reindex_lock
+
+    doc_id = "doc_lock_test_100"
+    doc = Document(
+        document_id=doc_id,
+        filename="lock_test.pdf",
+        page_count=1,
+        chunk_count=0,
+        status="indexing_required",
+        is_active=False,
+    )
+    db_session.add(doc)
+    db_session.commit()
+
+    # Manually acquire lock for doc_id
+    assert acquire_reindex_lock(doc_id) is True
+
+    try:
+        # Subsequent reindex attempt on same doc_id must fail with 409
+        with pytest.raises(Exception) as exc_info:
+            reindex_document(doc_id, db_session)
+        assert "409" in str(exc_info.value) or "currently being indexed" in str(exc_info.value)
+    finally:
+        release_reindex_lock(doc_id)

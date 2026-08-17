@@ -116,13 +116,16 @@ def call_gemini_ocr_batch_with_retry(
     return results
 
 
+import gc
+
 def extract_document_pages(content: bytes, filename: str) -> tuple[int, list[tuple[int, str]]]:
     """
     Extracts text from PDF, DOCX, or Image files.
     PDF logic:
     1. Checks each page for native text (`page.get_text()`).
     2. If native text length >= 20, extracts natively with ZERO Gemini OCR calls.
-    3. Scanned/image pages are collected and batched in groups of OCR_BATCH_SIZE.
+    3. Scanned/image pages are rendered and batched in groups of OCR_BATCH_SIZE
+       streamed page-by-page to prevent RAM spikes on 512MB RAM instances.
     """
     filename_lower = filename.lower()
     extracted_pages = []
@@ -133,7 +136,7 @@ def extract_document_pages(content: bytes, filename: str) -> tuple[int, list[tup
         pdf_doc = pymupdf.open(stream=BytesIO(content), filetype="pdf")
         page_count = len(pdf_doc)
 
-        scanned_pages_to_ocr = []
+        scanned_page_indices = []
 
         for page_index in range(page_count):
             page = pdf_doc[page_index]
@@ -141,16 +144,26 @@ def extract_document_pages(content: bytes, filename: str) -> tuple[int, list[tup
             if text and len(text.strip()) >= 20:
                 extracted_pages.append((page_index + 1, text.strip()))
             else:
+                scanned_page_indices.append(page_index)
+
+        batch_size = getattr(settings, "OCR_BATCH_SIZE", 4)
+        for i in range(0, len(scanned_page_indices), batch_size):
+            batch_indices = scanned_page_indices[i : i + batch_size]
+            batch_parts = []
+            for p_idx in batch_indices:
+                page = pdf_doc[p_idx]
                 pix = page.get_pixmap(dpi=150)
                 img_bytes = pix.tobytes("jpeg")
                 image_part = types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg")
-                scanned_pages_to_ocr.append((page_index + 1, image_part))
+                batch_parts.append((p_idx + 1, image_part))
+                del pix
 
-        batch_size = getattr(settings, "OCR_BATCH_SIZE", 4)
-        for i in range(0, len(scanned_pages_to_ocr), batch_size):
-            batch = scanned_pages_to_ocr[i : i + batch_size]
-            ocr_results = call_gemini_ocr_batch_with_retry(batch)
+            ocr_results = call_gemini_ocr_batch_with_retry(batch_parts)
             extracted_pages.extend(ocr_results)
+            del batch_parts
+            gc.collect()
+
+        pdf_doc.close()
 
     elif filename_lower.endswith((".docx", ".doc")):
         import docx
@@ -176,6 +189,8 @@ def extract_document_pages(content: bytes, filename: str) -> tuple[int, list[tup
         image_part = types.Part.from_bytes(data=content, mime_type=mime_type)
         ocr_results = call_gemini_ocr_batch_with_retry([(1, image_part)])
         extracted_pages.extend(ocr_results)
+        del image_part
+        gc.collect()
         page_count = 1
 
     extracted_pages.sort(key=lambda x: x[0])

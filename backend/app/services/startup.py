@@ -1,5 +1,7 @@
 import asyncio
+import gc
 import logging
+import threading
 from io import BytesIO
 
 from backend.app.core.database import SessionLocal
@@ -9,12 +11,18 @@ from backend.app.services.ocr import extract_document_pages, GeminiQuotaExhauste
 from backend.app.services.storage import download_file_from_storage, get_storage_key
 from backend.app.services.text_processing import chunk_text
 from backend.app.services.vector_store import get_collection, store_chunks
+from backend.app.services.documents import (
+    acquire_reindex_lock,
+    is_reindexing_in_progress,
+    release_reindex_lock,
+)
 from google.genai import types
 
 from sqlalchemy import or_
 from backend.app.core.config import settings
 
 logger = logging.getLogger("uvicorn")
+_SELF_HEAL_CYCLE_LOCK = threading.Lock()
 
 
 def _reindex_document_from_bytes(doc: Document, content: bytes) -> int:
@@ -36,23 +44,30 @@ def _reindex_document_from_bytes(doc: Document, content: bytes) -> int:
             document_id=doc.document_id,
             chunk_size=1000,
             chunk_overlap=200,
-            category=doc.category or "General Academic",
+            category=doc.category or "General",
             tags=doc.tags or "",
         )
         for chunk in page_chunks:
             chunk["metadata"]["version"] = doc.version or 1
             chunk["metadata"]["is_active"] = True
-            chunk["metadata"]["category"] = doc.category or "General Academic"
+            chunk["metadata"]["category"] = doc.category or "General"
             chunk["metadata"]["tags"] = doc.tags or ""
             all_chunks.append(chunk)
 
     if not all_chunks:
         return 0
 
-    texts = [chunk["text"] for chunk in all_chunks]
-    embeddings = generate_embeddings(texts)
-    store_chunks(chunks=all_chunks, embeddings=embeddings)
-    return len(all_chunks)
+    try:
+        texts = [chunk["text"] for chunk in all_chunks]
+        embeddings = generate_embeddings(texts)
+        store_chunks(chunks=all_chunks, embeddings=embeddings)
+        return len(all_chunks)
+    except Exception as err:
+        logger.error(f"[SELF-HEAL] Vector storage failed for '{doc.filename}': {err}")
+        return 0
+    finally:
+        del all_chunks
+        gc.collect()
 
 
 def sync_chromadb_with_postgres() -> None:
@@ -61,7 +76,12 @@ def sync_chromadb_with_postgres() -> None:
     Scans active and indexing_required PostgreSQL document records against ChromaDB vector storage.
     If vectors are missing (e.g. after ephemeral disk wipe or rate limit reset), downloads source file
     from Supabase Storage and re-indexes into ChromaDB automatically.
+    Sequential, memory-safe execution with in-process lock protection.
     """
+    if not _SELF_HEAL_CYCLE_LOCK.acquire(blocking=False):
+        logger.warning("[SELF-HEAL] Previous self-healing cycle is still in progress. Skipping duplicate run.")
+        return
+
     logger.info("[SELF-HEAL] Starting ChromaDB vector persistence check...")
     db = SessionLocal()
     try:
@@ -80,6 +100,13 @@ def sync_chromadb_with_postgres() -> None:
         coll = get_collection()
 
         for doc in target_docs:
+            if is_reindexing_in_progress(doc.document_id):
+                logger.info(f"[SELF-HEAL] Document '{doc.filename}' ({doc.document_id[:8]}) is already being re-indexed. Skipping...")
+                continue
+
+            if not acquire_reindex_lock(doc.document_id):
+                continue
+
             try:
                 res = coll.get(where={"document_id": doc.document_id})
                 chunk_count = len(res.get("ids", []))
@@ -97,6 +124,7 @@ def sync_chromadb_with_postgres() -> None:
 
                     if content:
                         new_count = _reindex_document_from_bytes(doc, content)
+                        del content
                         if new_count > 0:
                             doc.status = "processed"
                             doc.is_active = True
@@ -114,6 +142,9 @@ def sync_chromadb_with_postgres() -> None:
                         logger.warning(f"[SELF-HEAL] Source file for '{doc.filename}' not found in storage. Marked indexing_required.")
             except Exception as doc_err:
                 logger.error(f"[SELF-HEAL] Error checking/healing document '{doc.filename}': {doc_err}")
+            finally:
+                release_reindex_lock(doc.document_id)
+                gc.collect()
 
         db.commit()
         _cached_query_embedding.cache_clear()
@@ -123,6 +154,8 @@ def sync_chromadb_with_postgres() -> None:
         logger.error(f"[SELF-HEAL] Critical error during ChromaDB synchronization: {err}")
     finally:
         db.close()
+        _SELF_HEAL_CYCLE_LOCK.release()
+        gc.collect()
 
 
 async def run_async_self_healing():
