@@ -42,8 +42,10 @@ export default function ProfileCard({ profile }) {
           <div className="flex items-center gap-2 rounded-2xl border border-gray-800 bg-gray-900/60 px-3.5 py-2 text-xs">
             <GraduationCap size={15} className="text-indigo-400" />
             <div>
-              <p className="text-[10px] text-gray-500">Department</p>
-              <p className="font-semibold text-white">CSE • R22</p>
+              <p className="text-[10px] text-gray-500">Academic Profile</p>
+              <p className="font-semibold text-white">
+                {profile?.department || "Department"} • {profile?.academic_regulation || "Regulation"}
+              </p>
             </div>
           </div>
 

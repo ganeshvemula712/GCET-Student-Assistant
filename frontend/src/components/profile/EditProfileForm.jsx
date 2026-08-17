@@ -23,6 +23,8 @@ export default function EditProfileForm({ profile }) {
     if (profile) {
       reset({
         name: profile.name || "",
+        department: profile.department || "",
+        academic_regulation: profile.academic_regulation || "",
       });
     }
   }, [profile, reset]);
@@ -89,13 +91,42 @@ export default function EditProfileForm({ profile }) {
               Department
             </label>
             <div className="relative">
-              <input
-                type="text"
-                value="Computer Science & Engineering"
-                disabled
-                className="h-11 w-full cursor-not-allowed rounded-2xl border border-gray-800 bg-gray-900/80 px-4 text-xs text-gray-400"
-              />
-              <BookOpen size={16} className="absolute right-4 top-3.5 text-gray-600" />
+              <select
+                {...register("department")}
+                className="h-11 w-full appearance-none rounded-2xl border border-gray-800 bg-[#0b1020] px-4 text-xs text-white outline-none transition focus:border-indigo-500/60 focus:ring-2 focus:ring-indigo-500/20"
+              >
+                <option value="" className="bg-gray-900 text-gray-400">
+                  Select Department
+                </option>
+                <option value="Computer Science & Engineering" className="bg-gray-900 text-white">
+                  Computer Science & Engineering
+                </option>
+                <option value="CSE (Data Science)" className="bg-gray-900 text-white">
+                  CSE (Data Science)
+                </option>
+                <option value="CSE (AI & ML)" className="bg-gray-900 text-white">
+                  CSE (AI & ML)
+                </option>
+                <option value="Information Technology" className="bg-gray-900 text-white">
+                  Information Technology
+                </option>
+                <option value="Electronics & Communication Engineering" className="bg-gray-900 text-white">
+                  Electronics & Communication Engineering
+                </option>
+                <option value="Electrical & Electronics Engineering" className="bg-gray-900 text-white">
+                  Electrical & Electronics Engineering
+                </option>
+                <option value="Mechanical Engineering" className="bg-gray-900 text-white">
+                  Mechanical Engineering
+                </option>
+                <option value="Civil Engineering" className="bg-gray-900 text-white">
+                  Civil Engineering
+                </option>
+                <option value="Other" className="bg-gray-900 text-white">
+                  Other
+                </option>
+              </select>
+              <BookOpen size={16} className="pointer-events-none absolute right-4 top-3.5 text-gray-500" />
             </div>
           </div>
 
@@ -103,12 +134,23 @@ export default function EditProfileForm({ profile }) {
             <label className="mb-2 block text-xs font-semibold text-gray-300">
               Academic Regulation
             </label>
-            <input
-              type="text"
-              value="R22 Academic Regulation"
-              disabled
-              className="h-11 w-full cursor-not-allowed rounded-2xl border border-gray-800 bg-gray-900/80 px-4 text-xs text-gray-400"
-            />
+            <select
+              {...register("academic_regulation")}
+              className="h-11 w-full appearance-none rounded-2xl border border-gray-800 bg-[#0b1020] px-4 text-xs text-white outline-none transition focus:border-indigo-500/60 focus:ring-2 focus:ring-indigo-500/20"
+            >
+              <option value="" className="bg-gray-900 text-gray-400">
+                Select Academic Regulation
+              </option>
+              <option value="R22 Academic Regulation" className="bg-gray-900 text-white">
+                R22 Academic Regulation
+              </option>
+              <option value="R25 Academic Regulation" className="bg-gray-900 text-white">
+                R25 Academic Regulation
+              </option>
+              <option value="Other / Not Specified" className="bg-gray-900 text-white">
+                Other / Not Specified
+              </option>
+            </select>
           </div>
         </div>
 

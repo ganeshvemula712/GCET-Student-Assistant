@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from backend.app.models.document import Document, DEFAULT_CATEGORY, VALID_CATEGORIES
 from backend.app.services.embeddings import generate_embeddings, _cached_query_embedding
 from backend.app.services.text_processing import chunk_text
-from backend.app.services.gemini import client as gemini_client
+from backend.app.services.ocr import extract_document_pages, GeminiQuotaExhaustedError
 from backend.app.services.storage import (
     delete_file_from_storage,
     get_storage_key,
@@ -97,108 +97,18 @@ async def process_document(
 
     page_count = 1
     extracted_pages = []
+    ocr_quota_exhausted = False
 
-    # 1. Process PDF
-    if filename_lower.endswith(".pdf"):
-        try:
-            import pymupdf
-            pdf_document = pymupdf.open(
-                stream=BytesIO(content),
-                filetype="pdf",
-            )
-            page_count = len(pdf_document)
-            for page_index in range(page_count):
-                page = pdf_document[page_index]
-                text = page.get_text()
-                if text.strip():
-                    extracted_pages.append((page_index + 1, text))
-                else:
-                    # Fallback to Gemini Vision OCR for scanned/image-only PDF pages
-                    try:
-                        pix = page.get_pixmap(dpi=150)
-                        img_bytes = pix.tobytes("jpeg")
-                        image_part = types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg")
-
-                        ocr_prompt = (
-                            "You are an expert OCR and document analysis engine for GCET College. "
-                            "Extract all text, notices, examination guidelines, and timetable schedules from this document image. "
-                            "For timetables, format them as clean, structured Markdown tables with Day, Time, Subject, Room, and Faculty columns. "
-                            "Preserve exact course names, exam dates, and timing."
-                        )
-
-                        response = gemini_client.models.generate_content(
-                            model="gemini-2.5-flash",
-                            contents=[image_part, ocr_prompt],
-                        )
-                        ocr_text = response.text or ""
-                        if ocr_text.strip():
-                            extracted_pages.append((page_index + 1, ocr_text))
-                    except Exception as ocr_err:
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Failed to process OCR for scanned PDF page {page_index + 1}: {str(ocr_err)}",
-                        )
-        except HTTPException:
-            raise
-        except Exception:
-            raise HTTPException(
-                status_code=400,
-                detail="Failed to parse PDF document",
-            )
-
-    # 2. Process DOCX / DOC
-    elif filename_lower.endswith((".docx", ".doc")):
-        try:
-            import docx
-            doc_obj = docx.Document(BytesIO(content))
-            lines = []
-            for p in doc_obj.paragraphs:
-                if p.text.strip():
-                    lines.append(p.text)
-            for table in doc_obj.tables:
-                table_lines = []
-                for row in table.rows:
-                    cells = [cell.text.strip() for cell in row.cells]
-                    table_lines.append(" | ".join(cells))
-                if table_lines:
-                    lines.append("\n" + "\n".join(table_lines) + "\n")
-            full_text = "\n\n".join(lines)
-            if full_text.strip():
-                extracted_pages.append((1, full_text))
-            page_count = 1
-        except Exception:
-            raise HTTPException(
-                status_code=400,
-                detail="Failed to parse Word (.docx/.doc) document",
-            )
-
-    # 3. Process Images (JPG, JPEG, PNG) via Gemini Multimodal OCR Vision
-    elif filename_lower.endswith((".jpg", ".jpeg", ".png")):
-        try:
-            from PIL import Image
-            mime_type = "image/jpeg" if filename_lower.endswith((".jpg", ".jpeg")) else "image/png"
-            image_part = types.Part.from_bytes(data=content, mime_type=mime_type)
-
-            ocr_prompt = (
-                "You are an expert OCR and document analysis engine for GCET College. "
-                "Extract all text, notices, examination guidelines, and timetable schedules from this document image. "
-                "For timetables, format them as clean, structured Markdown tables with Day, Time, Subject, Room, and Faculty columns. "
-                "Preserve exact course names, exam dates, and timing."
-            )
-
-            response = gemini_client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=[image_part, ocr_prompt],
-            )
-            extracted_text = response.text or ""
-            if extracted_text.strip():
-                extracted_pages.append((1, extracted_text))
-            page_count = 1
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to process image OCR via Gemini Vision: {str(e)}",
-            )
+    try:
+        page_count, extracted_pages = extract_document_pages(content, file.filename)
+    except GeminiQuotaExhaustedError as quota_err:
+        ocr_quota_exhausted = True
+        logger.error(f"[UPLOAD] Quota exhausted during document extraction: {quota_err}")
+    except Exception as parse_err:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to parse document: {str(parse_err)}",
+        )
 
     # Handle Versioning
     new_version = 1
@@ -231,6 +141,26 @@ async def process_document(
             chunk["metadata"]["category"] = final_category
             chunk["metadata"]["tags"] = final_tags
             all_chunks.append(chunk)
+
+    if ocr_quota_exhausted:
+        new_document = Document(
+            document_id=document_id,
+            filename=file.filename,
+            page_count=page_count,
+            chunk_count=0,
+            status="indexing_required",
+            version=new_version,
+            is_active=False,
+            supersedes_id=supersedes_id,
+            category=final_category,
+            tags=final_tags,
+        )
+        db.add(new_document)
+        db.commit()
+        raise HTTPException(
+            status_code=429,
+            detail="Document uploaded successfully, but OCR indexing could not be completed because the Gemini OCR quota is currently exhausted. Please retry after the quota resets.",
+        )
 
     if not all_chunks:
         raise HTTPException(

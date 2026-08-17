@@ -5,6 +5,8 @@ export const updateProfileSchema = z.object({
     .string()
     .min(3, "Name must be at least 3 characters")
     .max(100, "Name is too long"),
+  department: z.string().optional().nullable(),
+  academic_regulation: z.string().optional().nullable(),
 });
 
 export const changePasswordSchema = z

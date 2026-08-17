@@ -5,7 +5,7 @@ from io import BytesIO
 from backend.app.core.database import SessionLocal
 from backend.app.models.document import Document
 from backend.app.services.embeddings import generate_embeddings, _cached_query_embedding
-from backend.app.services.gemini import client as gemini_client
+from backend.app.services.ocr import extract_document_pages, GeminiQuotaExhaustedError
 from backend.app.services.storage import download_file_from_storage, get_storage_key
 from backend.app.services.text_processing import chunk_text
 from backend.app.services.vector_store import get_collection, store_chunks
@@ -15,72 +15,14 @@ logger = logging.getLogger("uvicorn")
 
 
 def _reindex_document_from_bytes(doc: Document, content: bytes) -> int:
-    filename_lower = doc.filename.lower()
-    page_count = 1
-    extracted_pages = []
-
-    if filename_lower.endswith(".pdf"):
-        import pymupdf
-        pdf_document = pymupdf.open(stream=BytesIO(content), filetype="pdf")
-        page_count = len(pdf_document)
-        for page_index in range(page_count):
-            page = pdf_document[page_index]
-            text = page.get_text()
-            if text.strip():
-                extracted_pages.append((page_index + 1, text))
-            else:
-                try:
-                    pix = page.get_pixmap(dpi=150)
-                    img_bytes = pix.tobytes("jpeg")
-                    image_part = types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg")
-                    ocr_prompt = (
-                        "You are an expert OCR and document analysis engine for GCET College. "
-                        "Extract all text, notices, examination guidelines, and timetable schedules from this document image. "
-                        "For timetables, format them as clean, structured Markdown tables with Day, Time, Subject, Room, and Faculty columns. "
-                        "Preserve exact course names, exam dates, and timing."
-                    )
-                    response = gemini_client.models.generate_content(
-                        model="gemini-2.5-flash", contents=[image_part, ocr_prompt]
-                    )
-                    ocr_text = response.text or ""
-                    if ocr_text.strip():
-                        extracted_pages.append((page_index + 1, ocr_text))
-                except Exception as ocr_err:
-                    logger.error(f"[SELF-HEAL] OCR failed for page {page_index + 1}: {ocr_err}")
-
-    elif filename_lower.endswith((".docx", ".doc")):
-        import docx
-        doc_obj = docx.Document(BytesIO(content))
-        lines = []
-        for p in doc_obj.paragraphs:
-            if p.text.strip():
-                lines.append(p.text)
-        for table in doc_obj.tables:
-            table_lines = []
-            for row in table.rows:
-                cells = [cell.text.strip() for cell in row.cells]
-                table_lines.append(" | ".join(cells))
-            if table_lines:
-                lines.append("\n" + "\n".join(table_lines) + "\n")
-        full_text = "\n\n".join(lines)
-        if full_text.strip():
-            extracted_pages.append((1, full_text))
-
-    elif filename_lower.endswith((".jpg", ".jpeg", ".png")):
-        mime_type = "image/jpeg" if filename_lower.endswith((".jpg", ".jpeg")) else "image/png"
-        image_part = types.Part.from_bytes(data=content, mime_type=mime_type)
-        ocr_prompt = (
-            "You are an expert OCR and document analysis engine for GCET College. "
-            "Extract all text, notices, examination guidelines, and timetable schedules from this document image. "
-            "For timetables, format them as clean, structured Markdown tables with Day, Time, Subject, Room, and Faculty columns. "
-            "Preserve exact course names, exam dates, and timing."
-        )
-        response = gemini_client.models.generate_content(
-            model="gemini-2.5-flash", contents=[image_part, ocr_prompt]
-        )
-        extracted_text = response.text or ""
-        if extracted_text.strip():
-            extracted_pages.append((1, extracted_text))
+    try:
+        page_count, extracted_pages = extract_document_pages(content, doc.filename)
+    except GeminiQuotaExhaustedError as quota_err:
+        logger.error(f"[SELF-HEAL] Quota exhausted during document re-indexing: {quota_err}")
+        return 0
+    except Exception as err:
+        logger.error(f"[SELF-HEAL] Extraction failed for '{doc.filename}': {err}")
+        return 0
 
     all_chunks = []
     for p_num, p_text in extracted_pages:

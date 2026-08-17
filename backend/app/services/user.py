@@ -31,6 +31,10 @@ def update_profile(
 ):
 
     current_user.name = data.name
+    if data.department is not None:
+        current_user.department = data.department
+    if data.academic_regulation is not None:
+        current_user.academic_regulation = data.academic_regulation
 
     db.commit()
     db.refresh(current_user)

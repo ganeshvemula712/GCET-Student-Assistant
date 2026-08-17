@@ -39,6 +39,8 @@ class UserResponse(BaseModel):
     name: str
     email: EmailStr
     role: str
+    department: str | None = None
+    academic_regulation: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(
@@ -52,6 +54,8 @@ class UpdateUserRequest(BaseModel):
     """
 
     name: str
+    department: str | None = None
+    academic_regulation: str | None = None
 
 
 class ChangePasswordRequest(BaseModel):

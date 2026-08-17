@@ -122,16 +122,16 @@ export default function DocumentTable({ documents = [], onInspect, onDelete }) {
           <table className="w-full text-left text-xs text-gray-300">
             <thead className="border-b border-gray-800 bg-gray-900/60 font-bold uppercase tracking-wider text-gray-400">
               <tr>
-                <th className="p-4">Filename</th>
-                <th className="p-4">Category</th>
-                <th className="p-4">Tags</th>
-                <th className="p-4">Type</th>
-                <th className="p-4">Version</th>
-                <th className="p-4">Pages</th>
-                <th className="p-4">Vector Chunks</th>
-                <th className="p-4">RAG Status</th>
-                <th className="p-4">Uploaded</th>
-                <th className="p-4 text-right">Actions</th>
+                <th className="p-4 align-middle">Filename</th>
+                <th className="p-4 align-middle">Category</th>
+                <th className="p-4 align-middle w-48 max-w-[190px]">Tags</th>
+                <th className="p-4 align-middle">Type</th>
+                <th className="p-4 align-middle">Version</th>
+                <th className="p-4 align-middle">Pages</th>
+                <th className="p-4 align-middle">Vector Chunks</th>
+                <th className="p-4 align-middle">RAG Status</th>
+                <th className="p-4 align-middle">Uploaded</th>
+                <th className="p-4 align-middle text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/60">
@@ -139,47 +139,60 @@ export default function DocumentTable({ documents = [], onInspect, onDelete }) {
                 const ext = doc.filename?.split(".").pop()?.toUpperCase() || "PDF";
                 const catName = doc.category || "General Academic";
                 const tagList = doc.tags ? doc.tags.split(",").map((t) => t.strip ? t.strip() : t.trim()).filter(Boolean) : [];
+                const visibleTags = tagList.slice(0, 2);
+                const extraTagCount = tagList.length - visibleTags.length;
 
                 return (
                 <tr key={doc.document_id} className="transition hover:bg-gray-800/40">
-                  <td className="p-4 font-bold text-white flex items-center gap-2">
-                    <FileText size={16} className="text-indigo-400 shrink-0" />
-                    <span className="truncate max-w-xs">{doc.filename}</span>
+                  <td className="p-4 align-middle font-bold text-white">
+                    <div className="flex items-center gap-2">
+                      <FileText size={16} className="text-indigo-400 shrink-0" />
+                      <span className="truncate max-w-xs" title={doc.filename}>{doc.filename}</span>
+                    </div>
                   </td>
-                  <td className="p-4">
+                  <td className="p-4 align-middle">
                     <span className="rounded-full bg-indigo-500/15 border border-indigo-500/30 px-2.5 py-1 text-[11px] font-bold text-indigo-300 whitespace-nowrap">
                       {catName}
                     </span>
                   </td>
-                  <td className="p-4">
+                  <td className="p-4 align-middle">
                     {tagList.length > 0 ? (
-                      <div className="flex flex-wrap gap-1 max-w-[180px]">
-                        {tagList.map((tag) => (
-                          <span key={tag} className="rounded-md bg-cyan-500/10 border border-cyan-500/20 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300 truncate max-w-[80px]">
+                      <div className="flex items-center gap-1.5 max-w-[180px] overflow-hidden" title={tagList.join(", ")}>
+                        {visibleTags.map((tag) => (
+                          <span key={tag} className="rounded-md bg-cyan-500/10 border border-cyan-500/20 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300 truncate max-w-[85px]" title={tag}>
                             {tag}
                           </span>
                         ))}
+                        {extraTagCount > 0 && (
+                          <span className="rounded-md bg-gray-800 border border-gray-700 px-1.5 py-0.5 text-[10px] font-semibold text-gray-400 shrink-0 cursor-help" title={`All tags: ${tagList.join(", ")}`}>
+                            +{extraTagCount}
+                          </span>
+                        )}
                       </div>
                     ) : (
                       <span className="text-gray-500 text-[11px]">—</span>
                     )}
                   </td>
-                  <td className="p-4">
+                  <td className="p-4 align-middle">
                     <span className="rounded-md bg-gray-800 border border-gray-700 px-2 py-0.5 text-[10px] font-bold text-gray-300">
                       {ext}
                     </span>
                   </td>
-                  <td className="p-4">
+                  <td className="p-4 align-middle">
                     <span className="rounded-full bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 text-[11px] font-bold text-indigo-300">
                       v{doc.version || 1}
                     </span>
                   </td>
-                  <td className="p-4">{doc.page_count ?? 1}</td>
-                  <td className="p-4">{doc.chunk_count ?? 1}</td>
-                  <td className="p-4">
-                    {doc.is_active !== false ? (
+                  <td className="p-4 align-middle">{doc.page_count ?? 1}</td>
+                  <td className="p-4 align-middle">{doc.chunk_count ?? 1}</td>
+                  <td className="p-4 align-middle">
+                    {doc.is_active !== false && (doc.status === "processed" || !doc.status) ? (
                       <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold">
                         <CheckCircle2 size={14} /> Active RAG
+                      </span>
+                    ) : doc.status === "indexing_required" ? (
+                      <span className="inline-flex items-center gap-1 text-amber-400 font-semibold" title="Indexing required or Gemini OCR quota limit reached">
+                        <AlertTriangle size={14} /> Indexing Required
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-amber-400 font-semibold" title="Superseded by newer version">
@@ -187,10 +200,10 @@ export default function DocumentTable({ documents = [], onInspect, onDelete }) {
                       </span>
                     )}
                   </td>
-                  <td className="p-4 text-gray-400">
+                  <td className="p-4 align-middle text-gray-400">
                     {doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : "Recent"}
                   </td>
-                  <td className="p-4 text-right">
+                  <td className="p-4 align-middle text-right">
                     <div className="inline-flex items-center gap-2">
                       <button
                         type="button"

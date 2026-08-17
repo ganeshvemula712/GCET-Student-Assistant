@@ -76,19 +76,22 @@ def ensure_database_schema_migrations() -> None:
             db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS picture VARCHAR"))
             db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS given_name VARCHAR"))
             db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS family_name VARCHAR"))
+            db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS department VARCHAR"))
+            db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS academic_regulation VARCHAR"))
             db.commit()
             print("[SCHEMA MIGRATION] PostgreSQL 'documents' and 'users' table columns verified/added.")
         elif dialect_name == "sqlite":
-            try:
-                db.execute(text("ALTER TABLE documents ADD COLUMN category VARCHAR DEFAULT 'General Academic'"))
-                db.commit()
-            except Exception:
-                db.rollback()
-            try:
-                db.execute(text("ALTER TABLE documents ADD COLUMN tags VARCHAR DEFAULT ''"))
-                db.commit()
-            except Exception:
-                db.rollback()
+            for stmt in [
+                "ALTER TABLE documents ADD COLUMN category VARCHAR DEFAULT 'General Academic'",
+                "ALTER TABLE documents ADD COLUMN tags VARCHAR DEFAULT ''",
+                "ALTER TABLE users ADD COLUMN department VARCHAR",
+                "ALTER TABLE users ADD COLUMN academic_regulation VARCHAR",
+            ]:
+                try:
+                    db.execute(text(stmt))
+                    db.commit()
+                except Exception:
+                    db.rollback()
     except Exception as e:
         db.rollback()
         print(f"[SCHEMA MIGRATION NOTICE] {e}")
