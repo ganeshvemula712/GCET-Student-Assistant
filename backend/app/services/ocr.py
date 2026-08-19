@@ -68,8 +68,9 @@ def call_gemini_ocr_batch_with_retry(
 
     while attempt <= max_retries:
         try:
+            ocr_model = getattr(settings, "GEMINI_OCR_MODEL", "gemini-3.5-flash-lite")
             response = gemini_client.models.generate_content(
-                model="gemini-2.5-flash",
+                model=ocr_model,
                 contents=contents,
             )
             response_text = response.text or ""
