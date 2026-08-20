@@ -465,3 +465,59 @@ def test_real_embedding_array_serialization_precision():
         restored_vector = payload["embeddings"][0]
         assert len(restored_vector) == 768
         assert abs(restored_vector[0] - fake_embedding[0]) < 1e-7
+
+
+def test_stalled_self_healing_lock_expires_allowing_manual_reindex(db_session: Session):
+    """Change #4A Test 1 & 3: Stalled/expired lock does not permanently block manual admin re-index."""
+    import time
+    from backend.app.services.documents import _REINDEXING_IN_PROGRESS, _REINDEX_LOCK, reindex_document
+
+    doc_id = "doc_stalled_lock_606"
+    doc = Document(
+        document_id=doc_id,
+        filename="stalled_lock_sample.pdf",
+        page_count=1,
+        chunk_count=0,
+        status="indexing_required",
+        version=1,
+        is_active=False,
+    )
+    db_session.add(doc)
+    db_session.commit()
+
+    # Simulate a lock acquired 200 seconds ago (expired)
+    with _REINDEX_LOCK:
+        _REINDEXING_IN_PROGRESS[doc_id] = time.time() - 200.0
+
+    mock_pages = (1, [(1, "Text extracted after lock expiration")])
+    mock_embeddings = [[0.3] * 768]
+
+    with patch("backend.app.services.documents.download_file_from_storage", return_value=b"%PDF-sample"), \
+         patch("backend.app.services.documents.extract_document_pages", return_value=mock_pages), \
+         patch("backend.app.services.documents.generate_embeddings", return_value=mock_embeddings), \
+         patch("backend.app.services.vector_store.upload_file_to_storage"), \
+         patch("backend.app.services.vector_store.get_collection"):
+
+        res = reindex_document(doc_id, db_session)
+        assert res["status"] == "processed"
+        assert res["chunk_count"] == 1
+
+
+def test_fresh_active_lock_prevents_concurrent_reindexing():
+    """Change #4A Test 2: Active fresh lock (< 120s) rejects concurrent reindex attempts."""
+    import time
+    from backend.app.services.documents import (
+        _REINDEXING_IN_PROGRESS,
+        _REINDEX_LOCK,
+        acquire_reindex_lock,
+        release_reindex_lock,
+    )
+
+    doc_id = "doc_active_lock_707"
+    with _REINDEX_LOCK:
+        _REINDEXING_IN_PROGRESS[doc_id] = time.time()  # Fresh lock just acquired
+
+    try:
+        assert acquire_reindex_lock(doc_id) is False
+    finally:
+        release_reindex_lock(doc_id)

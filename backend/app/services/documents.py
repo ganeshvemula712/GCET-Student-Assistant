@@ -25,26 +25,40 @@ from backend.app.services.vector_store import (
 )
 from google.genai import types
 
-_REINDEXING_IN_PROGRESS = set()
+import time
+
+_REINDEXING_IN_PROGRESS: dict[str, float] = {}
 _REINDEX_LOCK = threading.Lock()
+LOCK_TIMEOUT_SECONDS = 120.0
 
 
-def is_reindexing_in_progress(document_id: str) -> bool:
-    with _REINDEX_LOCK:
-        return document_id in _REINDEXING_IN_PROGRESS
-
-
-def acquire_reindex_lock(document_id: str) -> bool:
+def is_reindexing_in_progress(document_id: str, timeout_seconds: float = LOCK_TIMEOUT_SECONDS) -> bool:
     with _REINDEX_LOCK:
         if document_id in _REINDEXING_IN_PROGRESS:
+            acquired_at = _REINDEXING_IN_PROGRESS[document_id]
+            if time.time() - acquired_at > timeout_seconds:
+                _REINDEXING_IN_PROGRESS.pop(document_id, None)
+                return False
+            return True
+        return False
+
+
+def acquire_reindex_lock(document_id: str, timeout_seconds: float = LOCK_TIMEOUT_SECONDS) -> bool:
+    with _REINDEX_LOCK:
+        now = time.time()
+        if document_id in _REINDEXING_IN_PROGRESS:
+            acquired_at = _REINDEXING_IN_PROGRESS[document_id]
+            if now - acquired_at > timeout_seconds:
+                _REINDEXING_IN_PROGRESS[document_id] = now
+                return True
             return False
-        _REINDEXING_IN_PROGRESS.add(document_id)
+        _REINDEXING_IN_PROGRESS[document_id] = now
         return True
 
 
 def release_reindex_lock(document_id: str) -> None:
     with _REINDEX_LOCK:
-        _REINDEXING_IN_PROGRESS.discard(document_id)
+        _REINDEXING_IN_PROGRESS.pop(document_id, None)
 
 
 def normalize_tags(tags_input: str | None) -> str:
