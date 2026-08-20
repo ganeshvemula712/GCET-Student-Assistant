@@ -70,12 +70,45 @@ def _reindex_document_from_bytes(doc: Document, content: bytes) -> int:
         gc.collect()
 
 
+import json
+from backend.app.services.storage import get_vector_storage_key
+
+
+def _validate_vector_payload(payload: dict, expected_document_id: str) -> bool:
+    """
+    Validates vector payload JSON structure, count consistency, and non-empty embeddings.
+    """
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("document_id") != expected_document_id:
+        return False
+
+    ids = payload.get("ids")
+    documents = payload.get("documents")
+    metadatas = payload.get("metadatas")
+    embeddings = payload.get("embeddings")
+
+    if not (isinstance(ids, list) and isinstance(documents, list) and isinstance(metadatas, list) and isinstance(embeddings, list)):
+        return False
+
+    n = len(ids)
+    if n == 0 or len(documents) != n or len(metadatas) != n or len(embeddings) != n:
+        return False
+
+    first_emb = embeddings[0]
+    if not isinstance(first_emb, list) or len(first_emb) == 0:
+        return False
+
+    return True
+
+
 def sync_chromadb_with_postgres() -> None:
     """
     Self-healing background worker:
     Scans active and indexing_required PostgreSQL document records against ChromaDB vector storage.
-    If vectors are missing (e.g. after ephemeral disk wipe or rate limit reset), downloads source file
-    from Supabase Storage and re-indexes into ChromaDB automatically.
+    If vectors are missing (e.g. after ephemeral disk wipe), attempts to restore from vectors/{document_id}.json
+    in Supabase Storage WITHOUT calling Gemini Embeddings API.
+    If vector JSON is missing or invalid, falls back to source file re-indexing.
     Sequential, memory-safe execution with in-process lock protection.
     """
     if not _SELF_HEAL_CYCLE_LOCK.acquire(blocking=False):
@@ -118,7 +151,43 @@ def sync_chromadb_with_postgres() -> None:
                         doc.is_active = True
                         doc.chunk_count = chunk_count
                 else:
-                    logger.warning(f"[SELF-HEAL] Vectors missing for document '{doc.filename}' ({doc.document_id[:8]}). Healing from storage...")
+                    logger.warning(f"[SELF-HEAL] Vectors missing for document '{doc.filename}' ({doc.document_id[:8]}). Checking Supabase vector backup...")
+                    vector_key = get_vector_storage_key(doc.document_id)
+                    vector_bytes = download_file_from_storage(vector_key)
+
+                    restored_from_json = False
+                    if vector_bytes:
+                        try:
+                            payload = json.loads(vector_bytes.decode("utf-8"))
+                            if _validate_vector_payload(payload, doc.document_id):
+                                coll.upsert(
+                                    ids=payload["ids"],
+                                    documents=payload["documents"],
+                                    metadatas=payload["metadatas"],
+                                    embeddings=payload["embeddings"],
+                                )
+                                restored_count = len(payload["ids"])
+                                doc.status = "processed"
+                                doc.is_active = True
+                                doc.chunk_count = restored_count
+                                restored_from_json = True
+                                logger.info(
+                                    f"[SELF-HEAL RESTORE] Restored '{doc.filename}': {restored_count} vectors loaded directly from "
+                                    f"Supabase Storage '{vector_key}' WITHOUT Gemini embedding API calls."
+                                )
+                                del payload
+                            else:
+                                logger.warning(f"[SELF-HEAL RESTORE] Vector payload '{vector_key}' for '{doc.filename}' failed validation. Falling back to re-indexing.")
+                        except Exception as val_err:
+                            logger.warning(f"[SELF-HEAL RESTORE] Error reading vector payload '{vector_key}' for '{doc.filename}': {val_err}")
+                        finally:
+                            del vector_bytes
+
+                    if restored_from_json:
+                        continue
+
+                    # Fallback to source document re-indexing if vector payload backup is unavailable or invalid
+                    logger.warning(f"[SELF-HEAL] Vector backup unavailable for '{doc.filename}'. Re-indexing from original source file...")
                     obj_key = get_storage_key(doc.document_id, doc.filename)
                     content = download_file_from_storage(obj_key)
 
@@ -131,15 +200,27 @@ def sync_chromadb_with_postgres() -> None:
                             doc.chunk_count = new_count
                             logger.info(f"[SELF-HEAL] Successfully restored '{doc.filename}': {new_count} chunks indexed into ChromaDB.")
                         else:
+                            if doc.status == "processed" and doc.is_active is True and (doc.chunk_count or 0) > 0:
+                                logger.warning(
+                                    f"[SELF-HEAL] Re-indexing temporarily failed for previously processed '{doc.filename}'. "
+                                    f"Preserving existing PostgreSQL state (chunk_count={doc.chunk_count})."
+                                )
+                            else:
+                                doc.status = "indexing_required"
+                                doc.is_active = False
+                                doc.chunk_count = 0
+                                logger.error(f"[SELF-HEAL] Re-indexing failed or empty for '{doc.filename}'. Status set to indexing_required.")
+                    else:
+                        if doc.status == "processed" and doc.is_active is True and (doc.chunk_count or 0) > 0:
+                            logger.warning(
+                                f"[SELF-HEAL] Source file for '{doc.filename}' temporarily unretrievable. "
+                                f"Preserving existing PostgreSQL state (chunk_count={doc.chunk_count})."
+                            )
+                        else:
                             doc.status = "indexing_required"
                             doc.is_active = False
                             doc.chunk_count = 0
-                            logger.error(f"[SELF-HEAL] Re-indexing failed or empty for '{doc.filename}'. Status set to indexing_required.")
-                    else:
-                        doc.status = "indexing_required"
-                        doc.is_active = False
-                        doc.chunk_count = 0
-                        logger.warning(f"[SELF-HEAL] Source file for '{doc.filename}' not found in storage. Marked indexing_required.")
+                            logger.warning(f"[SELF-HEAL] Source file for '{doc.filename}' not found in storage. Marked indexing_required.")
             except Exception as doc_err:
                 logger.error(f"[SELF-HEAL] Error checking/healing document '{doc.filename}': {doc_err}")
             finally:

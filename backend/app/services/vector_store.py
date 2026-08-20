@@ -11,10 +11,24 @@ def get_collection():
 collection = get_collection()
 
 
+import json
+import logging
+from backend.app.services.storage import (
+    delete_file_from_storage,
+    get_vector_storage_key,
+    upload_file_to_storage,
+)
+
+logger = logging.getLogger("uvicorn")
+
+
 def store_chunks(
     chunks: list[dict],
     embeddings: list[list[float]],
 ) -> None:
+
+    if not chunks:
+        return
 
     ids = []
     documents = []
@@ -42,6 +56,31 @@ def store_chunks(
         metadatas=metadatas,
         embeddings=embeddings,
     )
+
+    # Persist Vector Payload JSON to Supabase Storage
+    try:
+        doc_id = metadatas[0]["document_id"]
+        vector_key = get_vector_storage_key(doc_id)
+        json_embeddings = [[float(val) for val in vec] for vec in embeddings]
+        payload = {
+            "document_id": doc_id,
+            "ids": ids,
+            "documents": documents,
+            "metadatas": metadatas,
+            "embeddings": json_embeddings,
+        }
+        payload_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        upload_success = upload_file_to_storage(
+            content=payload_bytes,
+            object_key=vector_key,
+            content_type="application/json",
+        )
+        if upload_success:
+            logger.info(f"[VECTOR STORE] Persisted vector payload '{vector_key}' ({len(payload_bytes)} bytes) to Supabase Storage.")
+        else:
+            logger.warning(f"[VECTOR STORE WARNING] Failed to persist vector payload '{vector_key}' to Supabase Storage.")
+    except Exception as err:
+        logger.error(f"[VECTOR STORE ERROR] Failed persisting vector payload for document: {err}")
 
 
 SPELLING_NORM_MAP = {
@@ -139,6 +178,12 @@ def delete_document_chunks(document_id: str) -> None:
                 "document_id": document_id,
             }
         )
+    except Exception:
+        pass
+
+    try:
+        vector_key = get_vector_storage_key(document_id)
+        delete_file_from_storage(vector_key)
     except Exception:
         pass
 

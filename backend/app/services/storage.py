@@ -25,6 +25,10 @@ def get_storage_key(document_id: str, filename: str) -> str:
     return f"documents/{document_id}/{clean_name}"
 
 
+def get_vector_storage_key(document_id: str) -> str:
+    return f"vectors/{document_id}.json"
+
+
 def _get_local_file_path(object_key: str) -> str:
     base_dir = os.path.abspath("documents_storage")
     safe_path = os.path.join(base_dir, object_key.replace("/", os.sep))
