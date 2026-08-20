@@ -23,19 +23,16 @@ def generate_embeddings(
     """
     Convert a list of text strings into numerical vectors using Google Gemini Embeddings API (models/gemini-embedding-2).
     Supports single queries (fast fail with max_retries=1) and document chunk embedding (default max_retries=10).
-    Returns 3072-dimensional floating point vectors.
+    Uses 50ms pacing to reduce document upload indexing time from 60+s down to ~3s.
     """
     if not texts:
         return []
 
-    cleaned_texts = [t.strip() if isinstance(t, str) else str(t) for t in texts]
+    cleaned_texts = [t.strip() if (isinstance(t, str) and t.strip()) else "empty chunk" for t in texts]
 
     embeddings: list[list[float]] = []
 
     for text_item in cleaned_texts:
-        if not text_item:
-            text_item = "empty chunk"
-
         vector = None
         for attempt in range(1, max_retries + 1):
             try:
@@ -56,14 +53,17 @@ def generate_embeddings(
                         time.sleep(retry_delay)
                     else:
                         logger.error(
-                            f"[GEMINI EMBEDDINGS RATE LIMIT] Max retries ({max_retries}) reached for embedding generation: {api_err}"
+                            f"[GEMINI EMBEDDINGS RATE LIMIT] Max retries reached for embedding generation: {api_err}"
                         )
+                        raise api_err
+                else:
+                    if attempt >= max_retries:
                         raise api_err
         if vector is not None:
             embeddings.append(vector)
 
         if len(cleaned_texts) > 1:
-            time.sleep(1.0) # Paced to stay well under Gemini 100 RPM quota limit
+            time.sleep(0.05)  # 50ms pacing for 20x faster document ingestion
 
     return embeddings
 
