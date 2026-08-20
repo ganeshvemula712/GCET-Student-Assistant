@@ -57,12 +57,13 @@ def test_retrieval_handles_embedding_failure_fast():
     error_429 = APIError(429, {"message": "RESOURCE_EXHAUSTED"})
 
     with patch("backend.app.services.embeddings.client.models.embed_content") as mock_embed, patch("time.sleep") as mock_sleep:
-        mock_embed.side_effect = error_429
+        mock_embed.side_effect = [error_429, error_429]
 
         with pytest.raises(RetrievalServiceError):
             retrieve_relevant_chunks("What is the minimum attendance?", n_results=4)
 
-    mock_sleep.assert_not_called()
+    assert mock_embed.call_count == 2
+    mock_sleep.assert_called_with(1.0)
 
 
 def test_document_ingestion_embedding_retains_default_retries():

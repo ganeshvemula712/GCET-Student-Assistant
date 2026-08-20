@@ -76,12 +76,13 @@ QUERY_CACHE_SIZE = 300
 def _cached_query_embedding(normalized_query: str) -> tuple[float, ...]:
     """
     Internal bounded LRU-cached helper for single query embeddings.
+    Retries up to 2 times with 1.0s backoff to absorb transient 429 rate limit spikes.
     Returns tuple of floats for hashability and immutability.
     """
     vectors = generate_embeddings(
         [normalized_query],
-        max_retries=1,
-        retry_delay=2.0,
+        max_retries=2,
+        retry_delay=1.0,
     )
     if not vectors:
         raise ValueError("Embedding generation returned empty result")
