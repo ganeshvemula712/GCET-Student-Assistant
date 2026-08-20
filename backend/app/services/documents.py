@@ -1,4 +1,5 @@
 import gc
+import json
 import threading
 from hashlib import sha256
 from io import BytesIO
@@ -15,6 +16,7 @@ from backend.app.services.storage import (
     delete_file_from_storage,
     download_file_from_storage,
     get_storage_key,
+    get_vector_storage_key,
     upload_file_to_storage,
 )
 from backend.app.services.vector_store import (
@@ -22,6 +24,7 @@ from backend.app.services.vector_store import (
     get_collection,
     mark_document_chunks_inactive,
     store_chunks,
+    validate_vector_payload,
 )
 from google.genai import types
 
@@ -313,10 +316,41 @@ def get_documents(
                 res = coll.get(where={"document_id": doc.document_id})
                 vector_count = len(res.get("ids", []))
                 if vector_count == 0:
-                    if doc_dict["is_active"] or doc_dict["status"] == "processed":
-                        doc_dict["status"] = "indexing_required"
-                        doc_dict["is_active"] = False
-                    doc_dict["chunk_count"] = 0
+                    vector_key = get_vector_storage_key(doc.document_id)
+                    vector_bytes = download_file_from_storage(vector_key)
+                    restored_from_json = False
+
+                    if vector_bytes:
+                        try:
+                            payload = json.loads(vector_bytes.decode("utf-8"))
+                            if validate_vector_payload(payload, doc.document_id):
+                                coll.upsert(
+                                    ids=payload["ids"],
+                                    documents=payload["documents"],
+                                    metadatas=payload["metadatas"],
+                                    embeddings=payload["embeddings"],
+                                )
+                                restored_count = len(payload["ids"])
+                                doc_dict["status"] = "processed"
+                                doc_dict["is_active"] = True
+                                doc_dict["chunk_count"] = restored_count
+                                restored_from_json = True
+
+                                doc.status = "processed"
+                                doc.is_active = True
+                                doc.chunk_count = restored_count
+                        except Exception:
+                            pass
+
+                    if not restored_from_json:
+                        if doc.status == "processed" and doc.is_active is True and (doc.chunk_count or 0) > 0:
+                            doc_dict["status"] = "processed"
+                            doc_dict["is_active"] = True
+                            doc_dict["chunk_count"] = doc.chunk_count
+                        else:
+                            doc_dict["status"] = "indexing_required"
+                            doc_dict["is_active"] = False
+                            doc_dict["chunk_count"] = 0
                 else:
                     doc_dict["chunk_count"] = vector_count
             except Exception:

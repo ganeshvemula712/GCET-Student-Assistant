@@ -130,6 +130,10 @@ def admin_client(admin):
         return admin
 
     app.dependency_overrides[
+        get_current_user
+    ] = override_admin
+
+    app.dependency_overrides[
         require_admin
     ] = override_admin
 

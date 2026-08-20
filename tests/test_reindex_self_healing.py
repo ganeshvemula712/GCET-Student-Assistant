@@ -31,12 +31,12 @@ def test_missing_chromadb_vectors_returns_indexing_required(db_session: Session)
         docs = get_documents(db_session)
         target = next(d for d in docs if d["document_id"] == "doc_missing_vectors_123")
 
-        # Response representation must be updated
-        assert target["status"] == "indexing_required"
-        assert target["chunk_count"] == 0
-        assert target["is_active"] is False
+        # Change #1 & #2 Protection Rule: Processed document state is preserved when ChromaDB vectors are missing
+        assert target["status"] == "processed"
+        assert target["chunk_count"] == 102
+        assert target["is_active"] is True
 
-        # Database record historical chunk_count must remain untouched
+        # Database record chunk_count remains untouched
         db_doc = db_session.query(Document).filter(Document.document_id == "doc_missing_vectors_123").first()
         assert db_doc.chunk_count == 102
 

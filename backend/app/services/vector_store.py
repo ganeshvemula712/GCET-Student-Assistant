@@ -19,6 +19,34 @@ from backend.app.services.storage import (
     upload_file_to_storage,
 )
 
+
+def validate_vector_payload(payload: dict, expected_document_id: str) -> bool:
+    """
+    Validates vector payload JSON structure, count consistency, and non-empty embeddings.
+    """
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("document_id") != expected_document_id:
+        return False
+
+    ids = payload.get("ids")
+    documents = payload.get("documents")
+    metadatas = payload.get("metadatas")
+    embeddings = payload.get("embeddings")
+
+    if not (isinstance(ids, list) and isinstance(documents, list) and isinstance(metadatas, list) and isinstance(embeddings, list)):
+        return False
+
+    n = len(ids)
+    if n == 0 or len(documents) != n or len(metadatas) != n or len(embeddings) != n:
+        return False
+
+    first_emb = embeddings[0]
+    if not isinstance(first_emb, list) or len(first_emb) == 0:
+        return False
+
+    return True
+
 logger = logging.getLogger("uvicorn")
 
 

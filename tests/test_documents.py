@@ -164,3 +164,51 @@ def test_upload_document(
         data["message"]
         == "Document processed and stored successfully"
     )
+
+
+def test_get_all_documents_restores_from_supabase_vector_json(
+    admin_client,
+    db_session,
+):
+    import json
+    doc = Document(
+        document_id="on_demand_restore_999",
+        filename="ondemand.pdf",
+        page_count=2,
+        chunk_count=3,
+        status="processed",
+        is_active=True,
+    )
+    db_session.add(doc)
+    db_session.commit()
+
+    payload = {
+        "document_id": "on_demand_restore_999",
+        "ids": ["id1", "id2", "id3"],
+        "documents": ["Text 1", "Text 2", "Text 3"],
+        "metadatas": [{"document_id": "on_demand_restore_999"}, {"document_id": "on_demand_restore_999"}, {"document_id": "on_demand_restore_999"}],
+        "embeddings": [[0.1] * 768, [0.2] * 768, [0.3] * 768],
+    }
+    payload_bytes = json.dumps(payload).encode("utf-8")
+
+    mock_coll = MagicMock()
+    mock_coll.get.return_value = {"ids": []}  # ChromaDB missing vectors
+
+    with patch("backend.app.services.documents.get_collection", return_value=mock_coll), \
+         patch("backend.app.services.documents.download_file_from_storage", return_value=payload_bytes):
+
+        response = admin_client.get("/documents")
+        assert response.status_code == 200
+
+        data = response.json()
+        target = [d for d in data if d["document_id"] == "on_demand_restore_999"][0]
+        assert target["status"] == "processed"
+        assert target["chunk_count"] == 3
+        assert target["is_active"] is True
+
+        mock_coll.upsert.assert_called_once_with(
+            ids=payload["ids"],
+            documents=payload["documents"],
+            metadatas=payload["metadatas"],
+            embeddings=payload["embeddings"],
+        )
