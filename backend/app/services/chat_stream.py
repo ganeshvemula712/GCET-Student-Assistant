@@ -39,6 +39,22 @@ def _generate_fallback_general_response(question: str) -> str:
             "academic regulations, or technical questions?"
         )
 
+    if "database" in q_lower or "dbms" in q_lower:
+        return (
+            "### What is a Database (DBMS)?\n\n"
+            "A **Database** is an organized collection of structured data or information stored electronically in a computer system. "
+            "A **Database Management System (DBMS)** is the software used to interact with the database, manage users, execute queries, and ensure data consistency.\n\n"
+            "**Key Types of Databases:**\n"
+            "- **Relational Databases (RDBMS)**: Uses structured tables with rows and columns (e.g., PostgreSQL, MySQL, SQLite, Oracle). Data is queried using **SQL**.\n"
+            "- **NoSQL Databases**: Designed for unstructured or semi-structured data (e.g., MongoDB, Cassandra, Redis). Types include Document, Key-Value, Column-family, and Graph databases.\n"
+            "- **Vector Databases**: Optimized for multi-dimensional vector embeddings used in AI & RAG systems (e.g., ChromaDB, Pinecone, pgvector).\n\n"
+            "**Core Features of a DBMS (ACID Properties):**\n"
+            "- **Atomicity**: Transactions commit completely or roll back entirely.\n"
+            "- **Consistency**: Data adheres to constraints before and after transactions.\n"
+            "- **Isolation**: Concurrent transactions do not interfere with each other.\n"
+            "- **Durability**: Committed data survives system failures."
+        )
+
     if "deep learning" in q_lower:
         return (
             "### Deep Learning\n\n"
@@ -72,9 +88,10 @@ def _generate_fallback_general_response(question: str) -> str:
 
     return (
         f"### {question.strip().title()}\n\n"
-        f"Here is information regarding **{question.strip()}**:\n\n"
-        "This is an important concept in Computer Science and Engineering. "
-        "Feel free to ask further technical questions or explore related GCET academic topics."
+        f"**{question.strip()}** is a foundational concept in Computer Science and Engineering.\n\n"
+        "**Overview & Application:**\n"
+        f"It involves principles used across software development, system design, and algorithmic problem-solving. "
+        "For specific GCET course syllabi, lab manuals, or regulations related to this topic, feel free to ask a grounded question or check the uploaded course materials."
     )
 
 

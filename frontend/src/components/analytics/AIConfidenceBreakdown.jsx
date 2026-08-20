@@ -61,7 +61,7 @@ export default function AIConfidenceBreakdown({ data = {} }) {
             <Cpu size={18} className="text-indigo-400" />
             <div>
               <p className="text-[10px] text-gray-500">Model Engine</p>
-              <p className="font-bold text-white">Gemini 2.5 Flash</p>
+              <p className="font-bold text-white">Gemini 3.5 Flash</p>
             </div>
           </div>
         </div>

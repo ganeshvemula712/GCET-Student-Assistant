@@ -41,7 +41,7 @@ export default function OverviewCards({ data = {} }) {
     {
       title: "Average AI Confidence",
       value: `${data.avg_confidence || 94.5}%`,
-      subtitle: "Gemini 2.5 Flash accuracy",
+      subtitle: "Gemini 3.5 Flash accuracy",
       icon: Sparkles,
       color: "text-amber-400 bg-amber-500/10 border-amber-500/20",
     },

@@ -119,11 +119,124 @@ SPELLING_NORM_MAP = {
 }
 
 
+import re
+
+BRANCHES = {
+    "ds": ["ds", "data science"],
+    "aiml": ["aiml", "ai ml", "ai&ml", "ai and ml", "artificial intelligence"],
+    "cs": ["cs", "cse", "cyber security", "cybersecurity"],
+    "ece": ["ece", "electronics"],
+    "eee": ["eee", "electrical"],
+    "mech": ["mech", "mechanical"],
+}
+
+
+def extract_query_entities(query_text: str | None) -> dict:
+    if not query_text:
+        return {"branch": None, "section": None, "year": None, "semester": None}
+
+    q_lower = query_text.lower().strip()
+
+    # 1. Combined branch-section pattern (e.g. "ds-d", "aiml-d", "cs-a", "aiml a", "ds d")
+    found_branch = None
+    found_section = None
+
+    combined_match = re.search(r"\b(ds|aiml|cs|cse)\s*[-_\s]\s*([abcd])\b", q_lower)
+    if combined_match:
+        b_raw, s_raw = combined_match.group(1), combined_match.group(2)
+        found_branch = "cs" if b_raw in ("cs", "cse") else b_raw
+        found_section = s_raw
+    else:
+        for canonical, aliases in BRANCHES.items():
+            for alias in aliases:
+                if re.search(r"\b" + re.escape(alias) + r"\b", q_lower):
+                    found_branch = canonical
+                    break
+            if found_branch:
+                break
+
+        sec_match = re.search(r"\b(?:section|sec|sec-)\s*([abcd])\b|\b([abcd])\s*section\b", q_lower)
+        if sec_match:
+            found_section = sec_match.group(1) or sec_match.group(2)
+
+    found_year = None
+    year_match = re.search(r"\b(1st|2nd|3rd|4th|1|2|3|4)\s*(?:st|nd|rd|th)?\s*(?:yr|year|b\.?tech|btech)?\b", q_lower)
+    if year_match:
+        y_str = year_match.group(1).replace("st", "").replace("nd", "").replace("rd", "").replace("th", "")
+        if y_str in ("1", "2", "3", "4"):
+            found_year = y_str
+
+    found_sem = None
+    sem_match = re.search(r"\b(1st|2nd|1|2)\s*(?:st|nd)?\s*(?:sem|semester)\b", q_lower)
+    if sem_match:
+        s_str = sem_match.group(1).replace("st", "").replace("nd", "")
+        if s_str in ("1", "2"):
+            found_sem = s_str
+
+    return {
+        "branch": found_branch,
+        "section": found_section,
+        "year": found_year,
+        "semester": found_sem,
+    }
+
+
+def score_chunk_metadata_alignment(meta: dict, entities: dict, raw_distance: float) -> float:
+    if not meta or not any(entities.values()):
+        return raw_distance
+
+    fname = (meta.get("filename") or "").lower()
+    tags = (meta.get("tags") or "").lower()
+    combined_text = f"{fname} {tags}"
+
+    q_branch = entities["branch"]
+    q_section = entities["section"]
+    q_year = entities["year"]
+
+    distance_modifier = 0.0
+
+    if q_branch:
+        doc_branch = None
+        if "ds" in combined_text or "data science" in combined_text:
+            doc_branch = "ds"
+        elif "aiml" in combined_text or "ai ml" in combined_text or "ai&ml" in combined_text:
+            doc_branch = "aiml"
+        elif "cs" in combined_text or "cyber security" in combined_text:
+            doc_branch = "cs"
+        elif "mech" in combined_text or "mechanical" in combined_text:
+            doc_branch = "mech"
+
+        if doc_branch == q_branch:
+            distance_modifier -= 0.20
+        elif doc_branch and doc_branch != q_branch:
+            distance_modifier += 0.35
+
+    if q_section:
+        sec_pattern = r"\b" + re.escape(q_section) + r"\b|\bsec[-_\s]*" + re.escape(q_section) + r"\b"
+        if re.search(sec_pattern, combined_text):
+            distance_modifier -= 0.10
+        else:
+            for other_sec in ("a", "b", "c", "d"):
+                if other_sec != q_section and re.search(r"\bsec[-_\s]*" + other_sec + r"\b|\b" + other_sec + r"\s*section\b", combined_text):
+                    distance_modifier += 0.15
+                    break
+
+    if q_year:
+        year_tokens = {
+            "1": ["1st", "i-btech", "1 year", "1yr"],
+            "2": ["2nd", "ii-btech", "2 year", "2yr"],
+            "3": ["3rd", "iii-btech", "3 year", "3yr"],
+            "4": ["4th", "iv-btech", "4 year", "4yr"],
+        }
+        y_tokens = year_tokens.get(q_year, [])
+        if any(tok in combined_text for tok in y_tokens):
+            distance_modifier -= 0.05
+
+    final_dist = max(0.0, raw_distance + distance_modifier)
+    return final_dist
+
+
 def normalize_query_tokens_for_matching(query_text: str | None) -> str:
-    """
-    Normalize common spelling variations (e.g. 'calender' -> 'calendar')
-    and year/sem abbreviations so metadata token matching works reliably against filename tokens.
-    """
     if not query_text:
         return ""
     q_lower = query_text.lower().strip()
@@ -139,11 +252,13 @@ def search_chunks(
 ) -> list[dict]:
 
     coll = get_collection()
-    # Priority 1: Query active document vectors only
+    # Expand initial candidate pool from ChromaDB so entity re-ranking sees all candidate documents
+    candidate_limit = max(n_results * 4, 10)
+
     try:
         results = coll.query(
             query_embeddings=[query_embedding],
-            n_results=n_results,
+            n_results=candidate_limit,
             where={"is_active": True},
             include=["documents", "metadatas", "distances"],
         )
@@ -154,49 +269,45 @@ def search_chunks(
     metadatas = results.get("metadatas", [])
     distances = results.get("distances", [])
 
-    # Priority 2: Fallback query without filter if no active match
     if not documents or not documents[0]:
-        results = collection.query(
-            query_embeddings=[query_embedding],
-            n_results=n_results,
-            include=["documents", "metadatas", "distances"],
-        )
-        documents = results.get("documents", [])
-        metadatas = results.get("metadatas", [])
-        distances = results.get("distances", [])
+        try:
+            results = collection.query(
+                query_embeddings=[query_embedding],
+                n_results=candidate_limit,
+                include=["documents", "metadatas", "distances"],
+            )
+            documents = results.get("documents", [])
+            metadatas = results.get("metadatas", [])
+            distances = results.get("distances", [])
+        except Exception:
+            pass
 
     if not documents or not documents[0]:
         return []
 
-    retrieved_chunks = []
-
-    q_lower = normalize_query_tokens_for_matching(query_text)
+    entities = extract_query_entities(query_text)
+    candidate_chunks = []
 
     for document, metadata, distance in zip(
         documents[0],
         metadatas[0],
         distances[0],
     ):
-        final_dist = distance
-        if q_lower and metadata and metadata.get("filename"):
-            fname_lower = metadata["filename"].lower()
-            # If query explicitly matches filename terms (e.g. aiml, ds, timetable, calendar, ar25, 2yr/1sem)
-            fname_tokens = [t for t in fname_lower.replace("-", " ").replace("_", " ").replace(".", " ").split() if len(t) > 1]
-            matched_count = sum(1 for tok in fname_tokens if tok in q_lower)
-            if matched_count >= 2:
-                final_dist = min(final_dist, 0.45)
-            elif matched_count == 1 and any(k in q_lower for k in ("table", "timetable", "schedule", "calendar", "regulations", "aiml", "ds")):
-                final_dist = min(final_dist, 0.65)
-
-        retrieved_chunks.append(
+        adjusted_dist = score_chunk_metadata_alignment(metadata, entities, distance)
+        candidate_chunks.append(
             {
                 "text": document,
                 "metadata": metadata,
-                "distance": final_dist,
+                "distance": adjusted_dist,
+                "raw_distance": distance,
             }
         )
 
-    return retrieved_chunks
+    # Sort candidates by entity-adjusted distance score
+    candidate_chunks.sort(key=lambda item: item["distance"])
+
+    # Return top n_results after entity-aware re-ranking
+    return candidate_chunks[:n_results]
 
 
 def delete_document_chunks(document_id: str) -> None:

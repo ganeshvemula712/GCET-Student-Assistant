@@ -33,7 +33,7 @@ export default function AdminStats({ stats = {} }) {
     {
       title: "AI Requests Today",
       value: stats.aiRequests || 215,
-      subtitle: "Gemini 2.5 Flash Engine",
+      subtitle: "Gemini 3.5 Flash Engine",
       icon: Cpu,
       color: "text-amber-400 bg-amber-500/10 border-amber-500/20",
     },

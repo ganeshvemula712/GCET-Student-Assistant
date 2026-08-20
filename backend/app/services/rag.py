@@ -3,6 +3,7 @@ import re
 import time
 from typing import Generator
 
+from backend.app.core.config import settings
 from backend.app.core.prompts import (
     GENERAL_SYSTEM_PROMPT,
     RAG_SYSTEM_PROMPT,
@@ -10,6 +11,8 @@ from backend.app.core.prompts import (
 from backend.app.services.gemini import client
 
 MODELS_FALLBACK_ORDER = [
+    getattr(settings, "GEMINI_MODEL", "gemini-3.5-flash"),
+    "gemini-3.5-flash",
     "gemini-2.5-flash",
     "gemini-2.0-flash",
     "gemini-flash-latest",

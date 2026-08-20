@@ -21,7 +21,7 @@ export default function ChatHeader({ onToggleSidebar, onNewChat, totalMessages =
           <div className="flex items-center gap-2">
             <h2 className="text-base font-bold text-white">GCET AI Assistant</h2>
             <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/20">
-              Gemini 2.5 Flash
+              Gemini 3.5 Flash
             </span>
           </div>
           <div className="flex items-center gap-2 mt-0.5">

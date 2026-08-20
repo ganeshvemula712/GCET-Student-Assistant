@@ -51,7 +51,8 @@ export default function ChatWindow({
 
   const { containerRef, bottomSentinelRef, isAtBottom, scrollToBottom } = useAutoScroll({
     enabled: isStreaming,
-    dependency: `${targetConvId}-${streamingAnswer}`,
+    dependency: streamingAnswer,
+    messageCount: (data?.messages?.length || 0) + (isStreaming ? 1 : 0),
   });
 
   const conversationStats = useMemo(() => {
@@ -269,7 +270,7 @@ export default function ChatWindow({
             )}
 
             {/* Bottom Sentinel Ref for ChatGPT Auto-Scroll */}
-            <div ref={bottomSentinelRef} className="h-6 w-full shrink-0" />
+            <div ref={bottomSentinelRef} className="h-12 w-full shrink-0" />
           </>
         )}
       </div>

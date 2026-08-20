@@ -27,7 +27,7 @@ export default function SystemHealthCard() {
       color: "text-emerald-400 border-emerald-500/20 bg-emerald-500/10",
     },
     {
-      name: "Google Gemini 2.5 Flash API",
+      name: "Google Gemini 3.5 Flash API",
       endpoint: "generativeai.google",
       status: "Healthy",
       icon: Cpu,
