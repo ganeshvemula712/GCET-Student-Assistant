@@ -11,7 +11,9 @@ from backend.app.models.user import User
 from backend.app.services.memory import get_conversation_history, build_contextual_search_query
 from backend.app.services.message import save_message
 from backend.app.services.rag import (
+    generate_general_answer,
     generate_general_answer_stream,
+    generate_rag_answer,
     generate_rag_answer_stream,
 )
 from backend.app.services.retrieval import (

@@ -3,14 +3,17 @@ import os
 from typing import Any
 from google import genai
 
+from backend.app.core.config import settings
+
 logger = logging.getLogger("uvicorn")
 
 
 def _get_api_keys() -> list[str]:
     keys = []
-    k1 = os.getenv("GEMINI_API_KEY", "").strip()
+    k1 = (settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", "")).strip()
     k2 = (
-        os.getenv("GEMINI_API_KEY_SECONDARY", "")
+        settings.GEMINI_API_KEY_SECONDARY
+        or os.getenv("GEMINI_API_KEY_SECONDARY", "")
         or os.getenv("GEMINI_SECONDARY_API_KEY", "")
         or os.getenv("GEMINI_API_KEY_2", "")
         or os.getenv("SECOND_GEMINI_API_KEY", "")
@@ -29,11 +32,22 @@ class ModelsProxy:
     If Key #1 encounters a 429 quota error, it automatically fails over to Key #2.
     """
 
+    def __init__(self):
+        self._clients_cache: dict[str, genai.Client] = {}
+
     def __get_active_clients(self) -> list[genai.Client]:
         keys = _get_api_keys()
         if not keys:
-            return [genai.Client(api_key="")]
-        return [genai.Client(api_key=k) for k in keys]
+            if "" not in self._clients_cache:
+                self._clients_cache[""] = genai.Client(api_key="")
+            return [self._clients_cache[""]]
+
+        clients = []
+        for k in keys:
+            if k not in self._clients_cache:
+                self._clients_cache[k] = genai.Client(api_key=k)
+            clients.append(self._clients_cache[k])
+        return clients
 
     def embed_content(self, *args, **kwargs) -> Any:
         clients = self.__get_active_clients()
