@@ -178,6 +178,7 @@ def extract_query_entities(query_text: str | None) -> dict:
         "section": found_section,
         "year": found_year,
         "semester": found_sem,
+        "raw_query": query_text,
     }
 
 
@@ -231,6 +232,14 @@ def score_chunk_metadata_alignment(meta: dict, entities: dict, raw_distance: flo
         y_tokens = year_tokens.get(q_year, [])
         if any(tok in combined_text for tok in y_tokens):
             distance_modifier -= 0.05
+
+    # Timetable-specific document prioritization
+    q_is_timetable = bool(re.search(r"\b(timetable|time table|schedule|tt)\b", (entities.get("raw_query") or "").lower()))
+    if q_is_timetable:
+        if any(tok in combined_text for tok in ("timetable", "time table", "tt")):
+            distance_modifier -= 0.25
+        elif any(tok in combined_text for tok in ("academic calendar", "mid examination", "syllabus")):
+            distance_modifier += 0.40
 
     final_dist = max(0.0, raw_distance + distance_modifier)
     return final_dist

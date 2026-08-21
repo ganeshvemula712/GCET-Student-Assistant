@@ -18,7 +18,7 @@ export default function AIAnalyticsCard() {
             <h3 className="text-base font-bold text-white">AI Engine Performance</h3>
           </div>
           <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400">
-            Gemini 3.5 Flash
+            Gemini 2.5 Flash
           </span>
         </div>
 

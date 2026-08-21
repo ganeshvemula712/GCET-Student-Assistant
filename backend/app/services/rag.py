@@ -94,9 +94,9 @@ Student Question:
 {question}
 
 Instructions:
-- Answer the student's question accurately using the provided Knowledge Base documents.
-- Format your response cleanly using natural Markdown (paragraphs, bullet points, code blocks where appropriate).
-- Do NOT force rigid section headers like 'Overview', 'Key Points', 'Conclusion' unless natural to the topic.
+- Synthesize a direct, clean, beautifully structured Markdown response from the Knowledge Base documents.
+- Do NOT expose raw chunk prefixes, filename page numbers (e.g. 'Document.pdf (Page X):'), 'Document:', 'Category:', or 'Tags:' inside your answer text. Grounded source cards appear automatically below your response.
+- Format timetables into clean Markdown tables with day, time, subject, and faculty.
 - Return ONLY the student-facing answer in Markdown. Do not return JSON.
 """
 

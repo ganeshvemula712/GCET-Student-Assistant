@@ -42,7 +42,7 @@ export default function PreferenceCard() {
             <Cpu size={16} className="text-emerald-400" />
             <div>
               <p className="font-bold text-white">AI Engine Model</p>
-              <p className="text-[11px] text-gray-400">Google Gemini 3.5 Flash + ChromaDB</p>
+              <p className="text-[11px] text-gray-400">Google Gemini 2.5 Flash + ChromaDB</p>
             </div>
           </div>
           <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold text-emerald-400 border border-emerald-500/20">

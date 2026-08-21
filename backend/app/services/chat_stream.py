@@ -159,25 +159,36 @@ def _generate_fallback_rag_response(question: str, relevant: list[dict]) -> str:
 
     for c in relevant:
         text = c.get("text", "").strip()
-        filename = c.get("metadata", {}).get("filename", "Document")
-        page = c.get("metadata", {}).get("page", "")
-        page_str = f" (Page {page})" if page else ""
+        # Clean internal chunk headers or metadata
+        lines_in_text = text.split("\n")
+        cleaned_lines = []
+        for line in lines_in_text:
+            l = line.strip()
+            if l.startswith("--- Document:") or l.startswith("Category:") or l.startswith("Tags:") or l.startswith("Document:"):
+                continue
+            if l:
+                cleaned_lines.append(l)
 
-        paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
-        for p in paragraphs:
-            if len(p) > 20 and p not in seen_points:
-                seen_points.add(p)
-                points.append(f"- **{filename}{page_str}**: {p}")
+        cleaned_text = " ".join(cleaned_lines)
+        # Split into readable sentences or bullet items
+        sentences = [s.strip() for s in cleaned_text.replace(". ", ".\n").split("\n") if len(s.strip()) > 15]
+
+        for s in sentences:
+            s_clean = s.rstrip(".")
+            if s_clean and s_clean.lower() not in seen_points:
+                seen_points.add(s_clean.lower())
+                # Format as clean bullet point without filename/page prefix in answer body
+                points.append(f"- {s_clean}.")
                 if len(points) >= 8:
                     break
         if len(points) >= 8:
             break
 
     if points:
-        lines.append("### Key Details")
+        lines.append("## Key Information")
         lines.extend(points)
     else:
-        lines.append("The requested details are available in the attached GCET source documents.")
+        lines.append("The requested information is detailed in the attached GCET source documents.")
 
     return "\n\n".join(lines)
 
@@ -327,7 +338,7 @@ async def stream_chat(
             # CASE A — Grounded GCET RAG Mode
             print(f"[CHAT] Grounded GCET context found ({len(relevant)} relevant chunks). Executing RAG stream for effective_question='{effective_question}'...")
             context_text = "\n\n".join(
-                f"--- Document: {c['metadata'].get('filename')} (Page {c['metadata'].get('page')}) ---\n{c['text']}"
+                f"[Source: {c['metadata'].get('filename', 'Document')}]\n{c['text']}"
                 for c in relevant
             )
 
