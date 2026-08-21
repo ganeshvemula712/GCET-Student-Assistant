@@ -39,7 +39,8 @@ EXPLICIT_GCET_KEYWORDS = (
 )
 
 GENERAL_GREETINGS = {
-    "hello", "hi", "hey", "hloo", "hollo", "greetings", "good morning", "good afternoon", "good evening"
+    "hello", "hi", "hey", "hloo", "hollo", "greetings", "good morning", "good afternoon", "good evening",
+    "hii", "hiii", "hiiii", "helloo", "hellooo", "heyy", "heyyy", "yo", "yoo", "yooo", "hyy", "hyyy"
 }
 
 GENERAL_QUESTION_PREFIXES = (
@@ -108,7 +109,7 @@ def is_pure_general_concept(text: str) -> bool:
     if is_explicit_gcet_query(t_lower):
         return False
 
-    if t_lower in GENERAL_GREETINGS:
+    if t_lower in GENERAL_GREETINGS or re.match(r"^(h+i+|h+e+l+o+|h+e+y+|y+o+|h+y+)\b", t_lower):
         return True
 
     if "in general" in t_lower:
