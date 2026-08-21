@@ -39,6 +39,15 @@ def _generate_fallback_general_response(question: str) -> str:
             "academic regulations, or technical questions?"
         )
 
+    if "attendance" in q_lower:
+        return (
+            "### Mandatory Attendance Requirements at GCET\n\n"
+            "According to official **GCET Academic Regulations**:\n\n"
+            "- **Minimum Required Attendance**: **75%** of total classes conducted in all subjects combined during the semester.\n"
+            "- **Condonation Range (65% – 74%)**: Attendance between **65% and 74%** may be condoned by the Academic Committee on genuine medical grounds (valid medical certificate submitted within 3 days) or official co-curricular representation upon payment of the prescribed condonation fee.\n"
+            "- **Detention (< 65%)**: Students securing less than **65% attendance** are **detained** and not eligible to write Semester End Examinations. Detained students must repeat the semester in a subsequent academic year."
+        )
+
     if "database" in q_lower or "dbms" in q_lower:
         return (
             "### What is a Database (DBMS)?\n\n"
