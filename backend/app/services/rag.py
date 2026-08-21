@@ -11,10 +11,10 @@ from backend.app.core.prompts import (
 from backend.app.services.gemini import client
 
 MODELS_FALLBACK_ORDER = [
-    getattr(settings, "GEMINI_MODEL", "gemini-3.5-flash"),
-    "gemini-3.5-flash",
+    getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash"),
     "gemini-2.5-flash",
     "gemini-2.0-flash",
+    "gemini-1.5-flash",
     "gemini-flash-latest",
 ]
 

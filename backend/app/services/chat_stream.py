@@ -88,19 +88,32 @@ def _generate_fallback_general_response(question: str) -> str:
             "- **Robotics & Automation**: Intelligent decision-making in physical environments."
         )
 
-    if "rag" in q_lower or "retrieval" in q_lower:
+    if "python" in q_lower:
         return (
-            "### Retrieval-Augmented Generation (RAG)\n\n"
-            "**Retrieval-Augmented Generation (RAG)** is an AI framework that grounds Large Language Models by "
-            "fetching relevant context from an external vector database (such as ChromaDB) before generating a response."
+            "### What is Python?\n\n"
+            "**Python** is a high-level, interpreted programming language known for its clear syntax, readability, and versatility. "
+            "It supports multiple programming paradigms including object-oriented, procedural, and functional programming.\n\n"
+            "**Key Use Cases:**\n"
+            "- **Artificial Intelligence & Machine Learning**: NumPy, Pandas, PyTorch, TensorFlow, Scikit-learn.\n"
+            "- **Web Development**: FastAPI, Django, Flask.\n"
+            "- **Automation & Data Science**: Scripting, data visualization, web scraping, and quantitative analysis."
+        )
+
+    if "java" in q_lower:
+        return (
+            "### What is Java?\n\n"
+            "**Java** is a high-level, class-based, object-oriented programming language designed with the 'Write Once, Run Anywhere' (WORA) philosophy. "
+            "It runs on the Java Virtual Machine (JVM), providing platform independence, strong memory management, and robust security features.\n\n"
+            "**Key Concepts:**\n"
+            "- **Object-Oriented Programming (OOP)**: Encapsulation, Inheritance, Polymorphism, and Abstraction.\n"
+            "- **Applications**: Enterprise backend software, Android application development, web APIs, and distributed systems."
         )
 
     return (
         f"### {question.strip().title()}\n\n"
-        f"**{question.strip()}** is a foundational concept in Computer Science and Engineering.\n\n"
-        "**Overview & Application:**\n"
-        f"It involves principles used across software development, system design, and algorithmic problem-solving. "
-        "For specific GCET course syllabi, lab manuals, or regulations related to this topic, feel free to ask a grounded question or check the uploaded course materials."
+        f"**{question.strip()}** is a general technical concept in Computer Science and Software Engineering.\n\n"
+        "**Overview:**\n"
+        f"It encompasses fundamental principles, architectures, and algorithms widely applied across modern software development, system design, and computer engineering."
     )
 
 
@@ -265,14 +278,20 @@ async def stream_chat(
                     answer_text += chunk_text
                     yield event("token", content=chunk_text)
             except Exception as stream_err:
-                print(f"[CHAT] Gemini API RAG stream exception: {stream_err}. Using grounded document fallback...")
-                answer_text = f"Based on official **GCET Academic Documents** for *\"{question}\"*:\n\n"
-                for c in relevant:
-                    fname = c['metadata'].get('filename', 'GCET Document')
-                    page = c['metadata'].get('page', 1)
-                    excerpt = c['text'].strip()
-                    answer_text += f"### Source: {fname} (Page {page})\n{excerpt}\n\n"
-                yield event("token", content=answer_text)
+                print(f"[CHAT] Gemini API RAG stream exception: {stream_err}. Retrying non-stream generate_rag_answer...")
+                try:
+                    ans, conf, _ = generate_rag_answer(
+                        question=effective_question,
+                        context=context_text,
+                        history=history,
+                    )
+                    answer_text = ans
+                    confidence = conf
+                    yield event("token", content=answer_text)
+                except Exception as fallback_err:
+                    print(f"[CHAT] Gemini non-stream RAG exception: {fallback_err}. Returning polite connection notice...")
+                    answer_text = "I am currently experiencing a temporary API connection delay. Please try asking your question again in a moment."
+                    yield event("token", content=answer_text)
 
             unique_sources = {
                 (chunk["metadata"]["filename"], chunk["metadata"]["page"])
@@ -308,9 +327,19 @@ async def stream_chat(
                     answer_text += chunk_text
                     yield event("token", content=chunk_text)
             except Exception as stream_err:
-                print(f"[CHAT] Gemini General stream exception: {stream_err}. Using general fallback response...")
-                answer_text = _generate_fallback_general_response(question)
-                yield event("token", content=answer_text)
+                print(f"[CHAT] Gemini General stream exception: {stream_err}. Retrying non-stream generate_general_answer...")
+                try:
+                    ans, conf, _ = generate_general_answer(
+                        question=effective_question,
+                        history=history,
+                    )
+                    answer_text = ans
+                    confidence = conf
+                    yield event("token", content=answer_text)
+                except Exception as fallback_err:
+                    print(f"[CHAT] Gemini non-stream General exception: {fallback_err}. Using fallback response...")
+                    answer_text = _generate_fallback_general_response(question)
+                    yield event("token", content=answer_text)
 
             sources = []
             confidence = 85

@@ -3,7 +3,25 @@ from backend.app.services.vector_store import (
     extract_query_entities,
     score_chunk_metadata_alignment,
     search_chunks,
+    deduplicate_and_rank_chunks,
 )
+
+
+def test_deduplicate_and_rank_chunks_filters_duplicate_and_overrepresented_pages():
+    candidates = [
+        {"text": "Attendance requirement is 75% aggregate.", "metadata": {"filename": "doc1.pdf", "page": 1}, "distance": 0.2},
+        {"text": "Attendance requirement is 75% aggregate.", "metadata": {"filename": "doc1.pdf", "page": 1}, "distance": 0.22},  # Duplicate text
+        {"text": "Mobile phone restriction in classes.", "metadata": {"filename": "doc1.pdf", "page": 1}, "distance": 0.3},
+        {"text": "Dress code uniform guidelines.", "metadata": {"filename": "doc1.pdf", "page": 1}, "distance": 0.4},  # 3rd chunk on page 1 -> should cap at 2
+        {"text": "Placement eligibility criteria details.", "metadata": {"filename": "doc2.pdf", "page": 2}, "distance": 0.35},
+    ]
+
+    deduped = deduplicate_and_rank_chunks(candidates, max_results=3)
+
+    assert len(deduped) == 3
+    assert deduped[0]["text"] == "Attendance requirement is 75% aggregate."
+    assert deduped[1]["text"] == "Mobile phone restriction in classes."
+    assert deduped[2]["text"] == "Placement eligibility criteria details."
 
 
 def test_section_identifier_d_is_not_lost():
@@ -124,3 +142,113 @@ def test_search_chunks_out_of_scope_query_maintains_fallback():
 
     # Conflicting branch ('mech' vs 'aiml') MUST apply conflict penalty
     assert adjusted_dist > raw_dist
+
+
+def test_deduplicate_and_rank_chunks_empty_input():
+    """1. Empty input must return []"""
+    assert deduplicate_and_rank_chunks([]) == []
+
+
+def test_deduplicate_and_rank_chunks_single_chunk():
+    """2. One valid chunk must remain unchanged."""
+    chunk = {"text": "GCET Attendance Rule", "metadata": {"filename": "AR22.pdf", "page": 1}, "distance": 0.1}
+    res = deduplicate_and_rank_chunks([chunk], max_results=3)
+    assert len(res) == 1
+    assert res[0] == chunk
+
+
+def test_deduplicate_and_rank_chunks_exact_duplicates():
+    """3. Exact duplicate text must be removed, preserving highest relevance (lowest distance)."""
+    candidates = [
+        {"text": "75% aggregate attendance required.", "metadata": {"filename": "AR22.pdf", "page": 1}, "distance": 0.30},
+        {"text": "75% aggregate attendance required.", "metadata": {"filename": "AR22.pdf", "page": 1}, "distance": 0.15},
+    ]
+    res = deduplicate_and_rank_chunks(candidates, max_results=3)
+    assert len(res) == 1
+    assert res[0]["distance"] == 0.15
+
+
+def test_deduplicate_and_rank_chunks_near_duplicates():
+    """4. Chunks with normalized leading 30 words identical must be deduplicated."""
+    w30 = " ".join([f"word{i}" for i in range(30)])
+    c1 = {"text": f"{w30} extra text A", "metadata": {"filename": "doc.pdf", "page": 1}, "distance": 0.2}
+    c2 = {"text": f"{w30} extra text B", "metadata": {"filename": "doc.pdf", "page": 1}, "distance": 0.25}
+    res = deduplicate_and_rank_chunks([c1, c2], max_results=3)
+    assert len(res) == 1
+    assert res[0]["text"] == f"{w30} extra text A"
+
+
+def test_deduplicate_and_rank_chunks_same_page_capping():
+    """5. Maximum 2 chunks from same (filename, page). Two highest-ranked retained."""
+    candidates = [
+        {"text": "Chunk 1 on page 1", "metadata": {"filename": "overview.pdf", "page": 1}, "distance": 0.1},
+        {"text": "Chunk 2 on page 1", "metadata": {"filename": "overview.pdf", "page": 1}, "distance": 0.2},
+        {"text": "Chunk 3 on page 1", "metadata": {"filename": "overview.pdf", "page": 1}, "distance": 0.3},
+    ]
+    res = deduplicate_and_rank_chunks(candidates, max_results=3)
+    assert len(res) == 2
+    assert res[0]["text"] == "Chunk 1 on page 1"
+    assert res[1]["text"] == "Chunk 2 on page 1"
+
+
+def test_deduplicate_and_rank_chunks_complementary_pages():
+    """6. Different pages from the same document allowed."""
+    candidates = [
+        {"text": "Attendance rules on page 1", "metadata": {"filename": "AR22.pdf", "page": 1}, "distance": 0.1},
+        {"text": "Exam rules on page 2", "metadata": {"filename": "AR22.pdf", "page": 2}, "distance": 0.15},
+    ]
+    res = deduplicate_and_rank_chunks(candidates, max_results=3)
+    assert len(res) == 2
+
+
+def test_deduplicate_and_rank_chunks_complementary_documents():
+    """7. Different documents allowed."""
+    candidates = [
+        {"text": "Attendance rules in AR22", "metadata": {"filename": "AR22.pdf", "page": 1}, "distance": 0.1},
+        {"text": "Placement rules in Placement Policy", "metadata": {"filename": "Placement.pdf", "page": 1}, "distance": 0.12},
+    ]
+    res = deduplicate_and_rank_chunks(candidates, max_results=3)
+    assert len(res) == 2
+
+
+def test_deduplicate_and_rank_chunks_ranking_preservation():
+    """8. Lower ChromaDB distance remains higher priority in returned output."""
+    candidates = [
+        {"text": "Rank 3 text", "metadata": {"filename": "doc.pdf", "page": 3}, "distance": 0.4},
+        {"text": "Rank 1 text", "metadata": {"filename": "doc.pdf", "page": 1}, "distance": 0.1},
+        {"text": "Rank 2 text", "metadata": {"filename": "doc.pdf", "page": 2}, "distance": 0.2},
+    ]
+    res = deduplicate_and_rank_chunks(candidates, max_results=3)
+    assert res[0]["text"] == "Rank 1 text"
+    assert res[1]["text"] == "Rank 2 text"
+    assert res[2]["text"] == "Rank 3 text"
+
+
+def test_deduplicate_and_rank_chunks_metadata_preservation():
+    """9. Verify filename, page, category, tags and metadata remain intact."""
+    candidate = {
+        "text": "Metadata test snippet text",
+        "metadata": {"filename": "Policy.pdf", "page": 5, "category": "Regulations", "tags": "Academic, Rules"},
+        "distance": 0.15,
+    }
+    res = deduplicate_and_rank_chunks([candidate], max_results=3)
+    assert len(res) == 1
+    m = res[0]["metadata"]
+    assert m["filename"] == "Policy.pdf"
+    assert m["page"] == 5
+    assert m["category"] == "Regulations"
+    assert m["tags"] == "Academic, Rules"
+
+
+def test_deduplicate_and_rank_chunks_multi_doc_unchanged():
+    """10. Valid non-duplicate chunks from different docs remain available up to max_results."""
+    candidates = [
+        {"text": f"Unique content from doc {i}", "metadata": {"filename": f"doc_{i}.pdf", "page": 1}, "distance": 0.1 * i}
+        for i in range(1, 6)
+    ]
+    res = deduplicate_and_rank_chunks(candidates, max_results=3)
+    assert len(res) == 3
+    assert res[0]["metadata"]["filename"] == "doc_1.pdf"
+    assert res[1]["metadata"]["filename"] == "doc_2.pdf"
+    assert res[2]["metadata"]["filename"] == "doc_3.pdf"
+

@@ -1,7 +1,7 @@
 import re
 from sqlalchemy.orm import Session
 
-from backend.app.services.intent import is_explicit_gcet_query
+from backend.app.services.intent import is_explicit_gcet_query, is_pure_general_concept
 from backend.app.models.message import Message
 
 
@@ -121,12 +121,12 @@ def build_contextual_search_query(
     if any(re.search(pat, q_lower) for pat in MATH_PATTERNS):
         return q_clean, False
 
-    # 2. Standalone general CS concepts without anaphora are not follow-ups
+    # 2. Standalone general CS concepts / programming queries without anaphora are not follow-ups
     has_anaphora = any(p in words for p in ANAPHORA_PRONOUNS)
     has_followup_pattern = any(re.search(pat, q_lower) for pat in FOLLOWUP_EXPLICIT_PATTERNS)
     has_followup_prefix = any(q_lower.startswith(p) for p in FOLLOWUP_PREFIXES)
 
-    is_standalone_general = any(re.search(pat, q_lower) for pat in GENERAL_CONCEPT_PATTERNS)
+    is_standalone_general = is_pure_general_concept(q_lower)
     has_explicit_gcet_brand = any(brand in q_lower for brand in ("gcet", "geethanjali", "ar22", "r22", "r20"))
 
     if is_standalone_general and not has_explicit_gcet_brand and not has_anaphora and not has_followup_pattern:

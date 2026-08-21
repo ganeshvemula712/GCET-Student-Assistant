@@ -35,8 +35,8 @@ class Settings:
     SUPABASE_SECRET_KEY: str = os.getenv("SUPABASE_SECRET_KEY", "")
     SUPABASE_STORAGE_BUCKET: str = os.getenv("SUPABASE_STORAGE_BUCKET", "gcet-documents")
     OCR_BATCH_SIZE: int = int(os.getenv("OCR_BATCH_SIZE", "4"))
-    GEMINI_OCR_MODEL: str = os.getenv("GEMINI_OCR_MODEL", "gemini-3.5-flash-lite")
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+    GEMINI_OCR_MODEL: str = os.getenv("GEMINI_OCR_MODEL", "gemini-2.5-flash")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     SELF_HEALING_INTERVAL_MINUTES: int = int(os.getenv("SELF_HEALING_INTERVAL_MINUTES", "60"))
 
     # Legacy R2 settings preserved for backward compatibility

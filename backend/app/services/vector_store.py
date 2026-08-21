@@ -245,6 +245,48 @@ def normalize_query_tokens_for_matching(query_text: str | None) -> str:
     return q_lower
 
 
+def deduplicate_and_rank_chunks(candidate_chunks: list[dict], max_results: int = 3) -> list[dict]:
+    """
+    Filter duplicate and near-duplicate text chunks while preserving highest relevance,
+    complete source metadata (filename, page, etc.), and preventing context pollution.
+    """
+    if not candidate_chunks:
+        return []
+
+    sorted_chunks = sorted(candidate_chunks, key=lambda x: x.get("distance", 2.0))
+    deduped: list[dict] = []
+    seen_texts: set[str] = set()
+    page_chunk_counts: dict[tuple[str, int], int] = {}
+
+    for chunk in sorted_chunks:
+        text = chunk.get("text", "").strip()
+        if not text:
+            continue
+
+        # Normalize text snippet for exact & near-duplicate comparison
+        norm_snippet = " ".join(text.lower().split()[:30])
+        if norm_snippet in seen_texts:
+            continue
+
+        meta = chunk.get("metadata") or {}
+        fname = meta.get("filename", "")
+        page = meta.get("page", 1)
+        doc_page_key = (fname, page)
+
+        # Cap max chunks from the exact same (filename, page) to 2 to prevent single-page context flood
+        if page_chunk_counts.get(doc_page_key, 0) >= 2:
+            continue
+
+        seen_texts.add(norm_snippet)
+        page_chunk_counts[doc_page_key] = page_chunk_counts.get(doc_page_key, 0) + 1
+        deduped.append(chunk)
+
+        if len(deduped) >= max_results:
+            break
+
+    return deduped
+
+
 def search_chunks(
     query_embedding: list[float],
     n_results: int = 3,
@@ -303,11 +345,8 @@ def search_chunks(
             }
         )
 
-    # Sort candidates by entity-adjusted distance score
-    candidate_chunks.sort(key=lambda item: item["distance"])
-
-    # Return top n_results after entity-aware re-ranking
-    return candidate_chunks[:n_results]
+    # Return top n_results after entity-aware re-ranking and deduplication
+    return deduplicate_and_rank_chunks(candidate_chunks, max_results=n_results)
 
 
 def delete_document_chunks(document_id: str) -> None:

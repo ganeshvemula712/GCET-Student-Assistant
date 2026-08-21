@@ -71,6 +71,13 @@ def test_document_ingestion_does_not_use_query_cache():
 
 
 @pytest.mark.parametrize("general_query", [
+    "What is Retrieval-Augmented Generation and how does it work?",
+    "What is FastAPI?",
+    "Explain machine learning",
+    "Write a Java program to reverse a string",
+    "How do I reverse an array in Java?",
+    "What is an API?",
+    "What is Python?",
     "What is AI and ML?",
     "What is ML?",
     "Explain ML",
@@ -80,10 +87,8 @@ def test_document_ingestion_does_not_use_query_cache():
     "Explain AI and ML",
     "What is NLP?",
     "What is Data Science?",
-    "What is Python?",
     "What is Java?",
     "What is RAG?",
-    "Explain machine learning",
     "What is a neural network?",
     "Hello",
     "What is a package in Java?",
@@ -108,6 +113,9 @@ def test_general_questions_bypass_or_fallback_to_general_knowledge(db_session, s
         response = process_chat(request=request, current_user=student, db=db_session)
 
         assert response.answer == "General Knowledge Answer"
+        # CRITICAL ROUTING REQUIREMENT: General questions MUST NOT call retrieval!
+        mock_retrieve.assert_not_called()
+        assert response.sources == []
 
 
 @pytest.mark.parametrize("gcet_query", [
