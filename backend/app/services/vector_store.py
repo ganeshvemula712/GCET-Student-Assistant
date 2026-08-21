@@ -233,6 +233,19 @@ def score_chunk_metadata_alignment(meta: dict, entities: dict, raw_distance: flo
         if any(tok in combined_text for tok in y_tokens):
             distance_modifier -= 0.05
 
+    if q_branch and q_section:
+        combo_target = f"{q_branch}-{q_section}"
+        combo_target_space = f"{q_branch} {q_section}"
+        combo_target_underscore = f"{q_branch}_{q_section}"
+
+        if combo_target in combined_text or combo_target_space in combined_text or combo_target_underscore in combined_text:
+            distance_modifier -= 0.35
+        else:
+            for other_b in ("aiml", "ds", "cs", "cse", "ece", "eee", "mech"):
+                if other_b != q_branch and (f"{other_b}-{q_section}" in combined_text or f"{other_b} {q_section}" in combined_text or f"{other_b}_{q_section}" in combined_text):
+                    distance_modifier += 0.55
+                    break
+
     # Timetable-specific document prioritization
     q_is_timetable = bool(re.search(r"\b(timetable|time table|schedule|tt)\b", (entities.get("raw_query") or "").lower()))
     if q_is_timetable:

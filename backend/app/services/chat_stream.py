@@ -1,4 +1,5 @@
 import json
+import re
 import time
 import traceback
 from typing import AsyncGenerator
@@ -154,6 +155,7 @@ def _generate_fallback_rag_response(question: str, relevant: list[dict]) -> str:
     title = question.strip('?.')
     lines = [f"# {title}\n"]
 
+    table_lines = []
     seen_points = set()
     points = []
 
@@ -165,6 +167,10 @@ def _generate_fallback_rag_response(question: str, relevant: list[dict]) -> str:
             l = line.strip()
             if l.startswith("--- Document:") or l.startswith("Category:") or l.startswith("Tags:") or l.startswith("Document:") or l.startswith("[Source:"):
                 continue
+            if l.startswith("|") and l.endswith("|"):
+                if l not in table_lines:
+                    table_lines.append(l)
+                continue
             if l:
                 cleaned_lines.append(l)
 
@@ -173,20 +179,28 @@ def _generate_fallback_rag_response(question: str, relevant: list[dict]) -> str:
 
         for s in sentences:
             s_clean = s.rstrip(".")
+            # Avoid starting with lowercase fragments or fragment joiners
+            if re.match(r"^(and|or|is|to|the|in|at|by|with|for)\b", s_clean, re.I) and len(s_clean.split()) < 5:
+                continue
             if s_clean and s_clean.lower() not in seen_points:
                 seen_points.add(s_clean.lower())
-                points.append(f"- {s_clean}.")
+                points.append(s_clean)
                 if len(points) >= 8:
                     break
         if len(points) >= 8:
             break
 
-    if points:
-        first_point = points[0][2:]
-        lines.append(f"{first_point}\n")
+    if table_lines:
+        lines.append("### Timetable Schedule\n")
+        lines.extend(table_lines)
+    elif points:
+        first_clean = points[0]
+        if not first_clean[0].isupper():
+            first_clean = first_clean[0].upper() + first_clean[1:]
+        lines.append(f"{first_clean}.\n")
         if len(points) > 1:
             lines.append("### Key Requirements")
-            lines.extend(points[1:])
+            lines.extend([f"- {p}." for p in points[1:]])
     else:
         lines.append("The requested details are available in the attached GCET source documents.")
 
