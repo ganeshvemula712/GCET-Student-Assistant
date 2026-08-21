@@ -94,9 +94,11 @@ Student Question:
 {question}
 
 Instructions:
-- Synthesize a direct, clean, beautifully structured Markdown response from the Knowledge Base documents.
+- Synthesize a direct, natural, beautifully structured Markdown assistant response from the Knowledge Base documents.
+- Start directly with a clear 1-2 sentence explanation paragraph under the main title.
+- Do NOT output disclaimers like 'Based on the verified GCET Knowledge Base documents:' or redundant 'Key Details' headers.
 - Do NOT expose raw chunk prefixes, filename page numbers (e.g. 'Document.pdf (Page X):'), 'Document:', 'Category:', or 'Tags:' inside your answer text. Grounded source cards appear automatically below your response.
-- Format timetables into clean Markdown tables with day, time, subject, and faculty.
+- Format timetables into clean Markdown tables with Day, Time, Subject, Room, and Faculty.
 - Return ONLY the student-facing answer in Markdown. Do not return JSON.
 """
 
