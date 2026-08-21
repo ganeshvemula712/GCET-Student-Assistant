@@ -16,6 +16,7 @@ class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_API_KEY_SECONDARY: str = os.getenv("GEMINI_API_KEY_SECONDARY", "")
 
     SECRET_KEY: str = os.getenv("SECRET_KEY", "")
 
