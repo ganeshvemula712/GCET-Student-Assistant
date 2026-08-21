@@ -155,7 +155,6 @@ def _generate_fallback_rag_response(question: str, relevant: list[dict]) -> str:
     title = question.strip('?.')
     lines = [f"# {title}\n"]
 
-    table_lines = []
     seen_points = set()
     points = []
 
@@ -168,9 +167,10 @@ def _generate_fallback_rag_response(question: str, relevant: list[dict]) -> str:
             if l.startswith("--- Document:") or l.startswith("Category:") or l.startswith("Tags:") or l.startswith("Document:") or l.startswith("[Source:"):
                 continue
             if l.startswith("|") and l.endswith("|"):
-                if l not in table_lines:
-                    table_lines.append(l)
-                continue
+                # Clean pipes into readable text
+                l = l.strip("|").replace("|", " — ").strip()
+                if ":---" in l or "---" in l:
+                    continue
             if l:
                 cleaned_lines.append(l)
 
@@ -190,10 +190,7 @@ def _generate_fallback_rag_response(question: str, relevant: list[dict]) -> str:
         if len(points) >= 8:
             break
 
-    if table_lines:
-        lines.append("### Timetable Schedule\n")
-        lines.extend(table_lines)
-    elif points:
+    if points:
         first_clean = points[0]
         if not first_clean[0].isupper():
             first_clean = first_clean[0].upper() + first_clean[1:]

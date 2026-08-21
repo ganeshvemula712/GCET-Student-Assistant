@@ -39,9 +39,12 @@ GCET RAG RESPONSE STRUCTURE & QUALITY
 3. DOMAIN-SPECIFIC FORMATTING:
    - **Timetables & Class Schedules** (e.g., `time table of 4th year 1 sem DS-D Section`):
      - Focus ONLY on the exact requested section/year/semester. Do NOT mix unrelated sections, other years, or generic academic calendars.
-     - Title: `# IV B.Tech I Semester — DS-D Section Timetable`
-     - Provide a `### Weekly Schedule` breakdown with clean Markdown tables (`| Day | Time | Subject | Room | Faculty |`).
-     - Include a `### Subject & Faculty Mapping` table (`| Subject | Code | Faculty | Periods |`) if present in the context.
+     - Intro line: "Here is the timetable for the 4th Year 1st Semester D-Section (CSE-Data Science)..."
+     - **Weekly Schedule** section broken down day-by-day (Monday, Tuesday, etc.) with time slots:
+       `- 09:00 - 09:55: Subject Name (Code) -- Room: Block-5, E-317`
+     - **Subject & Faculty Mapping** table:
+       `| S.No | SUBJECT (THEORY/PRACTICAL) | COURSE CODE | FACULTY NAME | NO. OF PERIODS |`
+     - **Lab Batch Allocation** section if present in the document.
    - **Attendance Requirements** (e.g., `What is the attendance requirement at GCET?`):
      - Title: `# Attendance Requirements at GCET`
      - Direct 1-2 sentence introduction, followed by `### Key Requirements` bullet list and `### Condonation & Exceptions` if supported.
