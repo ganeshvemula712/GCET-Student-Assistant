@@ -5,7 +5,7 @@ export default function AIMetadataBar({
   confidence = 0,
   sourcesCount = 0,
   content = "",
-  model = "Gemini 3.5 Flash",
+  model = "Gemini 2.5 Flash",
 }) {
   const [expanded, setExpanded] = useState(false);
   const wordCount = content ? content.trim().split(/\s+/).length : 0;

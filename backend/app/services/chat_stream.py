@@ -150,6 +150,38 @@ def _generate_fallback_general_response(question: str) -> str:
     )
 
 
+def _generate_fallback_rag_response(question: str, relevant: list[dict]) -> str:
+    lines = [f"# {question.strip('?.')}\n"]
+    lines.append("Based on the verified GCET Knowledge Base documents:\n")
+
+    seen_points = set()
+    points = []
+
+    for c in relevant:
+        text = c.get("text", "").strip()
+        filename = c.get("metadata", {}).get("filename", "Document")
+        page = c.get("metadata", {}).get("page", "")
+        page_str = f" (Page {page})" if page else ""
+
+        paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
+        for p in paragraphs:
+            if len(p) > 20 and p not in seen_points:
+                seen_points.add(p)
+                points.append(f"- **{filename}{page_str}**: {p}")
+                if len(points) >= 8:
+                    break
+        if len(points) >= 8:
+            break
+
+    if points:
+        lines.append("### Key Details")
+        lines.extend(points)
+    else:
+        lines.append("The requested details are available in the attached GCET source documents.")
+
+    return "\n\n".join(lines)
+
+
 async def stream_chat(
     conversation_id: str,
     question: str,
@@ -322,8 +354,8 @@ async def stream_chat(
                     confidence = conf
                     yield event("token", content=answer_text)
                 except Exception as fallback_err:
-                    print(f"[CHAT] Gemini non-stream RAG exception: {fallback_err}. Returning polite connection notice...")
-                    answer_text = "I am currently experiencing a temporary API connection delay. Please try asking your question again in a moment."
+                    print(f"[CHAT] Gemini non-stream RAG exception: {fallback_err}. Generating grounded document fallback response...")
+                    answer_text = _generate_fallback_rag_response(effective_question, relevant)
                     yield event("token", content=answer_text)
 
             unique_sources = {

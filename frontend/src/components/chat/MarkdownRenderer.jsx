@@ -120,12 +120,13 @@ export default function MarkdownRenderer({ content }) {
           em({ children }) {
             return <em className="italic text-gray-300">{children}</em>;
           },
-          code({ inline, className, children, ...props }) {
+          code({ node, inline, className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || "");
             const codeString = String(children).replace(/\n$/, "");
+            const isMultiLine = codeString.includes("\n") || Boolean(match) || (node && node.position && node.position.start.line !== node.position.end.line);
 
-            return !inline && match ? (
-              <CodeBlock language={match[1]} value={codeString} />
+            return isMultiLine ? (
+              <CodeBlock language={match ? match[1] : ""} value={codeString} />
             ) : (
               <code className="rounded-lg bg-gray-800/90 px-1.5 py-0.5 font-mono text-xs text-emerald-300 border border-gray-700/60 break-words [overflow-wrap:anywhere]" {...props}>
                 {children}
@@ -147,7 +148,7 @@ export default function MarkdownRenderer({ content }) {
           },
         }}
       >
-        {content}
+        {typeof content === "string" ? content.replace(/\r\n/g, "\n") : content}
       </ReactMarkdown>
     </div>
   );

@@ -90,20 +90,30 @@ class ModelsProxy:
     def generate_content_stream(self, *args, **kwargs) -> Any:
         clients = self.__get_active_clients()
         last_err = None
-        for idx, client in enumerate(clients):
-            try:
-                return client.models.generate_content_stream(*args, **kwargs)
-            except Exception as err:
-                err_str = str(err)
-                if ("429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "Quota exceeded" in err_str) and idx < len(clients) - 1:
-                    logger.warning(
-                        f"[GEMINI KEY ROTATION] API Key #{idx+1} hit quota limit. Automatically failing over to Key #{idx+2} in 0ms..."
-                    )
-                    last_err = err
-                    continue
-                raise err
-        if last_err:
-            raise last_err
+
+        def _rotating_stream_generator():
+            nonlocal last_err
+            for idx, client in enumerate(clients):
+                try:
+                    stream = client.models.generate_content_stream(*args, **kwargs)
+                    for chunk in stream:
+                        yield chunk
+                    return
+                except Exception as err:
+                    err_str = str(err)
+                    if ("429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "Quota exceeded" in err_str) and idx < len(clients) - 1:
+                        logger.warning(
+                            f"[GEMINI KEY ROTATION] API Key #{idx+1} hit quota limit during stream iteration. Automatically failing over to Key #{idx+2} in 0ms..."
+                        )
+                        last_err = err
+                        continue
+                    if idx == len(clients) - 1 and len(clients) > 1:
+                        logger.error(f"[GEMINI KEY ROTATION EXHAUSTED] All {len(clients)} API keys exhausted quota: {err_str[:150]}")
+                    raise err
+            if last_err:
+                raise last_err
+
+        return _rotating_stream_generator()
 
 
 class RotatingGeminiClient:
