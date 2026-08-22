@@ -182,13 +182,14 @@ def extract_query_entities(query_text: str | None) -> dict:
     }
 
 
-def score_chunk_metadata_alignment(meta: dict, entities: dict, raw_distance: float) -> float:
+def score_chunk_metadata_alignment(meta: dict, entities: dict, raw_distance: float, text: str = "") -> float:
     if not meta or not any(entities.values()):
         return raw_distance
 
     fname = (meta.get("filename") or "").lower()
     tags = (meta.get("tags") or "").lower()
-    combined_text = f"{fname} {tags}"
+    text_snippet = (text[:300] if text else "").lower()
+    combined_text = f"{fname} {tags} {text_snippet}"
 
     q_branch = entities["branch"]
     q_section = entities["section"]
@@ -357,7 +358,7 @@ def search_chunks(
         metadatas[0],
         distances[0],
     ):
-        adjusted_dist = score_chunk_metadata_alignment(metadata, entities, distance)
+        adjusted_dist = score_chunk_metadata_alignment(metadata, entities, distance, document)
         candidate_chunks.append(
             {
                 "text": document,

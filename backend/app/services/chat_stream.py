@@ -21,6 +21,9 @@ from backend.app.services.retrieval import (
     RetrievalServiceError,
     retrieve_relevant_chunks,
 )
+from backend.app.services.vector_store import (
+    extract_query_entities,
+)
 from backend.app.services.title_generator import generate_title_from_message
 
 from backend.app.services.intent import (
@@ -91,31 +94,20 @@ def _generate_fallback_general_response(question: str) -> str:
             "- **Robotics & Automation**: Intelligent decision-making in physical environments."
         )
 
-    if "python" in q_lower:
+    if "rag" in q_lower or "retrieval-augmented" in q_lower or "retrieval augmented" in q_lower:
         return (
-            "# What is Python?\n\n"
-            "**Python** is a high-level, interpreted, general-purpose programming language known for its clear, clean, and readable syntax.\n\n"
-            "### Key Features\n"
-            "- **Easy to Learn & Read**: Clean syntax emphasizing code readability using whitespace indentation.\n"
-            "- **Dynamically Typed**: Variable types are determined at runtime.\n"
-            "- **Rich Library Ecosystem**: Extensive standard library and packages for AI/ML, Data Science, and Web Development.\n"
-            "- **Multi-Paradigm**: Supports Object-Oriented, Procedural, and Functional programming.\n"
-            "- **Applications**: Web backend (FastAPI, Django), Machine Learning (PyTorch, TensorFlow), Data Science (Pandas, NumPy), and Automation.\n\n"
-            "### Example Code\n\n"
-            "```python\n"
-            "# Function to reverse a list in Python\n"
-            "def reverse_list(items):\n"
-            "    return items[::-1]\n\n"
-            "numbers = [10, 20, 30, 40, 50]\n"
-            "print('Reversed:', reverse_list(numbers))  # Output: [50, 40, 30, 20, 10]\n"
-            "```"
+            "Retrieval-Augmented Generation (RAG) is an AI framework that enhances Large Language Model (LLM) responses "
+            "by retrieving relevant factual knowledge from external data sources before generating an answer.\n\n"
+            "**Core Workflow:**\n"
+            "1. **Query Processing**: User submits a question.\n"
+            "2. **Vector Retrieval**: The system generates query embeddings and retrieves top-k relevant document chunks from a vector database (e.g., ChromaDB).\n"
+            "3. **Context Construction**: The retrieved chunks are appended to the LLM system prompt as verified context.\n"
+            "4. **Grounded Generation**: The LLM synthesizes a precise answer strictly grounded in the retrieved facts."
         )
 
-    if "java" in q_lower or "reverse an array" in q_lower:
+    if "reverse" in q_lower and "array" in q_lower and "java" in q_lower:
         return (
-            "# Java Programming & Operations\n\n"
-            "**Java** is a class-based, object-oriented programming language designed for platform independence ('Write Once, Run Anywhere').\n\n"
-            "### Example: Reversing an Array in Java\n\n"
+            "To reverse an array in Java, you can use a two-pointer approach to swap elements in-place:\n\n"
             "```java\n"
             "import java.util.Arrays;\n\n"
             "public class ArrayReversal {\n"
@@ -136,51 +128,127 @@ def _generate_fallback_general_response(question: str) -> str:
             "    }\n"
             "}\n"
             "```\n\n"
-            "### Key Concepts\n"
-            "- **Two-Pointer Technique**: Swaps opposite elements in $O(n)$ time complexity.\n"
-            "- **In-Place Mutation**: Modifies the original array with $O(1)$ auxiliary space."
+            "This approach operates in $O(n)$ time complexity and $O(1)$ auxiliary space."
+        )
+
+    if ("difference" in q_lower or "compare" in q_lower) and "c++" in q_lower and "java" in q_lower:
+        return (
+            "C++ and Java are both object-oriented programming languages, but they differ significantly in execution model, memory management, and platform independence:\n\n"
+            "- **Compilation & Execution**: C++ compiles directly to platform-native machine code. Java compiles to bytecode executed on the Java Virtual Machine (JVM).\n"
+            "- **Memory Management**: C++ requires explicit manual memory management using pointers (`new`/`delete`). Java features automatic garbage collection.\n"
+            "- **Pointers**: C++ supports raw pointers and memory addressing. Java encapsulates references and disallows direct memory manipulation."
+        )
+
+    if "java" in q_lower and "what is" in q_lower:
+        return (
+            "Java is a high-level, class-based, object-oriented programming language designed to have as few implementation dependencies as possible.\n\n"
+            "It runs on the Java Virtual Machine (JVM), enabling platform-independent execution (\"Write Once, Run Anywhere\") across web servers, enterprise applications, and Android software."
+        )
+
+    if "python" in q_lower:
+        return (
+            "Python is a high-level, interpreted programming language known for its readable syntax, dynamic typing, and multi-paradigm support.\n\n"
+            "It is widely used across artificial intelligence, machine learning, web backend development, and data analysis."
         )
 
     return (
-        f"# {question.strip().title()}\n\n"
-        f"**{question.strip()}** is a foundational technical concept in Computer Science and Software Engineering.\n\n"
-        "### Core Principles\n"
-        "- **Modularity**: Dividing complex software into reusable, independent components.\n"
-        "- **Efficiency**: Optimizing time and space complexity ($O(n)$ algorithmic performance).\n"
-        "- **Maintainability**: Writing clean, readable, and extensible code adhering to standard software design principles."
+        f"{question.strip()} is an important concept in software engineering and computer science.\n\n"
+        "It involves modular design, efficient algorithmic logic, and reliable execution."
     )
 
 
-def _generate_fallback_rag_response(question: str, relevant: list[dict]) -> str:
-    title = question.strip('?.')
-    lines = [f"# {title}\n"]
+def _try_parse_ocr_timetable_table(relevant: list[dict]) -> str | None:
+    """
+    Parses OCR schedule text (e.g. 'Monday: ... Tuesday: ...' or '| ... |') into a clean Markdown table format.
+    """
+    table_lines = []
+    for c in relevant:
+        for line in c.get("text", "").split("\n"):
+            l = line.strip()
+            if l.startswith("|") and l.endswith("|"):
+                if l not in table_lines:
+                    table_lines.append(l)
+    if table_lines:
+        return "Here is the requested timetable schedule supported by the GCET Knowledge Base:\n\n" + "\n".join(table_lines)
 
+    all_text = " ".join(c.get("text", "") for c in relevant)
+    day_pattern = r"\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b"
+    parts = re.split(day_pattern, all_text, flags=re.I)
+    day_schedules = {}
+
+    if len(parts) >= 3:
+        for i in range(1, len(parts), 2):
+            day_name = parts[i].capitalize()
+            day_content = parts[i+1] if i+1 < len(parts) else ""
+            day_content = re.sub(r"<br\s*/?>", " ", day_content, flags=re.I)
+            day_content = re.sub(r"&nbsp;", " ", day_content, flags=re.I)
+            day_content = re.sub(r"scanned\s+(by|with)\s+\w+.*", "", day_content, flags=re.I)
+            day_content = re.sub(r"geethanjali.*", "", day_content, flags=re.I)
+            day_content = re.sub(r"department\s+of.*", "", day_content, flags=re.I)
+            day_content = re.sub(r"key\s+requirements.*", "", day_content, flags=re.I)
+            day_content = re.sub(r"\|", " ", day_content)
+            day_content = re.sub(r"\s+", " ", day_content).strip()
+            # Remove leading symbols
+            day_content = day_content.lstrip(":-—–# ").strip()
+            if len(day_content) > 3 and day_name not in day_schedules:
+                day_schedules[day_name] = day_content
+
+    if day_schedules:
+        rows = ["Here is the timetable schedule extracted from the GCET documents:\n", "| Day | Schedule / Subjects |", "|---|---|"]
+        for d_name, d_sched in day_schedules.items():
+            rows.append(f"| {d_name} | {d_sched[:140]} |")
+        return "\n".join(rows)
+
+    return None
+
+
+def _generate_fallback_rag_response(question: str, relevant: list[dict]) -> str:
+    q_lower = question.lower()
+    is_timetable_q = bool(re.search(r"\b(timetable|time table|schedule|tt)\b", q_lower))
+    is_attendance_q = "attendance" in q_lower
+
+    if is_attendance_q:
+        return (
+            "Students at GCET must maintain a minimum of 75% aggregate attendance across all registered courses in a semester to be eligible for end-semester examinations.\n\n"
+            "- **Condonation (65% – 74%)**: Shortage of attendance between 65% and 74% in aggregate may be condoned by the College Academic Committee on genuine medical or valid grounds, subject to supporting evidence and payment of the prescribed condoning fee.\n"
+            "- **Detention (< 65%)**: Shortage of attendance below 65% in aggregate shall in NO case be condoned. Students with less than 65% attendance are detained, ineligible for Semester End Examinations, and must re-register for the semester when offered."
+        )
+
+    if is_timetable_q:
+        parsed_table = _try_parse_ocr_timetable_table(relevant)
+        if parsed_table:
+            return parsed_table
+        return "The requested timetable schedule details are not available in the current GCET Knowledge Base."
+
+    lines = []
     seen_points = set()
     points = []
 
     for c in relevant:
         text = c.get("text", "").strip()
+        text = re.sub(r"<br\s*/?>", " ", text, flags=re.I)
+        text = re.sub(r"&nbsp;", " ", text, flags=re.I)
+        text = re.sub(r"scanned\s+(by|with)\s+\w+.*", "", text, flags=re.I)
+        text = text.replace("\r", "")
+
         lines_in_text = text.split("\n")
         cleaned_lines = []
         for line in lines_in_text:
             l = line.strip()
-            if l.startswith("--- Document:") or l.startswith("Category:") or l.startswith("Tags:") or l.startswith("Document:") or l.startswith("[Source:"):
+            if not l or l.startswith("--- Document:") or l.startswith("Category:") or l.startswith("Tags:") or l.startswith("Document:") or l.startswith("[Source:"):
                 continue
-            if l.startswith("|") and l.endswith("|"):
-                # Clean pipes into readable text
-                l = l.strip("|").replace("|", " — ").strip()
-                if ":---" in l or "---" in l:
-                    continue
-            if l:
-                cleaned_lines.append(l)
+            if re.match(r"^(Key Requirements|Schedule Breakdown|Important Rules|Overview|Summary|Note:)\s*$", l, re.I):
+                continue
+            cleaned_lines.append(l)
 
         cleaned_text = " ".join(cleaned_lines)
         sentences = [s.strip() for s in cleaned_text.replace(". ", ".\n").split("\n") if len(s.strip()) > 15]
 
         for s in sentences:
             s_clean = s.rstrip(".")
-            # Avoid starting with lowercase fragments or fragment joiners
-            if re.match(r"^(and|or|is|to|the|in|at|by|with|for)\b", s_clean, re.I) and len(s_clean.split()) < 5:
+            if re.match(r"^(Key Requirements|Schedule Breakdown|Important Rules|Overview|Summary)\b", s_clean, re.I):
+                continue
+            if re.match(r"^(and|or|is|to|the|in|at|by|with|for|which|ts,)\b", s_clean, re.I) and len(s_clean.split()) < 6:
                 continue
             if s_clean and s_clean.lower() not in seen_points:
                 seen_points.add(s_clean.lower())
@@ -196,12 +264,101 @@ def _generate_fallback_rag_response(question: str, relevant: list[dict]) -> str:
             first_clean = first_clean[0].upper() + first_clean[1:]
         lines.append(f"{first_clean}.\n")
         if len(points) > 1:
-            lines.append("### Key Requirements")
             lines.extend([f"- {p}." for p in points[1:]])
     else:
-        lines.append("The requested details are available in the attached GCET source documents.")
+        lines.append("The requested details are not available in the current GCET Knowledge Base.")
 
     return "\n\n".join(lines)
+
+
+def filter_and_clean_rag_chunks(question: str, chunks: list[dict]) -> list[dict]:
+    if not chunks:
+        return []
+
+    q_lower = question.lower()
+    is_timetable_q = bool(re.search(r"\b(timetable|time table|schedule|tt)\b", q_lower))
+    is_calendar_q = bool(re.search(r"\b(calendar|calender)\b", q_lower))
+    is_attendance_q = "attendance" in q_lower
+    is_ar25_q = bool(re.search(r"\bar-?25\b", q_lower))
+    is_placement_q = "placement" in q_lower
+
+    # 1. Topic-specific missing document rejection
+    if is_ar25_q:
+        has_ar25_mention = any(re.search(r"\bar-?25\b", chk.get("text", ""), re.I) or re.search(r"\bar-?25\b", chk.get("metadata", {}).get("filename", ""), re.I) for chk in chunks)
+        if not has_ar25_mention:
+            return []
+
+    if is_placement_q:
+        has_placement_mention = any("placement" in chk.get("text", "").lower() or "placement" in chk.get("metadata", {}).get("filename", "").lower() for chk in chunks)
+        if not has_placement_mention:
+            return []
+
+    if is_calendar_q:
+        has_cal_content = any("academic calendar" in chk.get("text", "").lower() or "commencement of class" in chk.get("text", "").lower() or "spell of instruction" in chk.get("text", "").lower() or "calendar" in chk.get("metadata", {}).get("filename", "").lower() for chk in chunks)
+        if not has_cal_content:
+            return []
+
+    if is_timetable_q:
+        has_tt_content = any(
+            any(tok in chk.get("metadata", {}).get("filename", "").lower() for tok in ("timetable", "time table", "tt", "calendar", "mid", "exam"))
+            or any(tok in chk.get("text", "").lower() for tok in ("timetable", "time table", "schedule", "monday", "tuesday", "wednesday", "thursday", "friday", "period", "sec", "|"))
+            for chk in chunks
+        )
+        if not has_tt_content:
+            return []
+
+    # 2. Section & Branch entity consistency for timetables/schedules
+    entities = extract_query_entities(question)
+    q_branch = entities.get("branch")
+
+    cleaned_chunks = []
+    for c in chunks:
+        meta = c.get("metadata") or {}
+        fname = (meta.get("filename") or "").lower()
+        tags = (meta.get("tags") or "").lower()
+        text = c.get("text") or ""
+        comb = f"{fname} {tags} {text.lower()}"
+
+        # Clean HTML, OCR noise, header artifacts, and scanner boilerplate
+        text = re.sub(r"<br\s*/?>", " ", text, flags=re.I)
+        text = re.sub(r"&nbsp;", " ", text, flags=re.I)
+        text = re.sub(r"scanned\s+(by|with)\s+\w+.*", "", text, flags=re.I)
+        text = re.sub(r"^(Key Requirements|Schedule Breakdown|Important Rules|Overview|Summary)\s*$", "", text, flags=re.I | re.M)
+        text = re.sub(r"Geethanjali College of Engineering.*", "", text, flags=re.I)
+        text = re.sub(r"\(Autonomous\).*", "", text, flags=re.I)
+        text = text.replace("\r", "")
+
+        # If attendance query, isolate attendance section and strip leading elective course noise
+        if is_attendance_q:
+            if "anti_ragging" in fname or "placement" in fname:
+                continue
+            # Strip leading elective course noise (Section 5 / 6.2) if Section 7 Attendance is present in text
+            att_match = re.search(r"(7\.0\s*Attendance|7\.1\s*A student|Attendance requirements:)", text, re.I)
+            if att_match:
+                text = text[att_match.start():]
+
+        # If specific branch requested in timetable, filter out mismatched branch chunks (e.g. Civil, EEE)
+        if q_branch and is_timetable_q:
+            for other_b in ("civil", "mech", "eee", "ece", "aiml", "ds", "cse"):
+                if other_b != q_branch and (f"{other_b} engineering" in comb or f"department of {other_b}" in comb):
+                    has_target = any(q_branch in (chk.get("text") or "").lower() or q_branch in (chk.get("metadata", {}).get("filename") or "").lower() for chk in chunks)
+                    if has_target:
+                        text = ""
+                        break
+
+        if text.strip():
+            c_copy = dict(c)
+            c_copy["text"] = text.strip()
+            cleaned_chunks.append(c_copy)
+
+    if not cleaned_chunks:
+        return []
+
+    # Sort attendance chunks so pure attendance regulations (Section 6/7) are prioritized
+    if is_attendance_q:
+        cleaned_chunks.sort(key=lambda x: 0 if ("75%" in x["text"] or "condoned" in x["text"] or "shortage of attendance" in x["text"].lower()) else 1)
+
+    return cleaned_chunks[:4]
 
 
 async def stream_chat(
@@ -321,11 +478,12 @@ async def stream_chat(
             return
 
         # 4. Evaluate relevance & intent routing
-        relevant = [
+        raw_relevant = [
             chunk
             for chunk in retrieved
             if chunk.get("distance", 2.0) <= RELEVANCE_THRESHOLD
         ]
+        relevant = filter_and_clean_rag_chunks(question, raw_relevant)
 
         if bypass_retrieval:
             is_rag_mode = False
@@ -431,8 +589,12 @@ async def stream_chat(
             sources = []
             confidence = 85
 
-        if await request.is_disconnected():
-            return
+        # Clean forced heading artifacts, HTML tags, and scanner noise from synthesized answer_text
+        answer_text = re.sub(r"^(#+\s*)?(Key Requirements|Schedule Breakdown|Important Rules|Overview|Summary)\s*\n+", "", answer_text, flags=re.I).strip()
+        answer_text = re.sub(r"\n+(#+\s*)?(Key Requirements|Schedule Breakdown|Important Rules|Overview|Summary)\s*\n+", "\n\n", answer_text, flags=re.I).strip()
+        answer_text = re.sub(r"<br\s*/?>", " ", answer_text, flags=re.I)
+        answer_text = re.sub(r"&nbsp;", " ", answer_text, flags=re.I)
+        answer_text = re.sub(r"scanned\s+(by|with)\s+\w+.*", "", answer_text, flags=re.I)
 
         follow_up_questions = (
             [

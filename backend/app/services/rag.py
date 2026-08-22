@@ -81,6 +81,11 @@ def _stream_answer(prompt: str) -> Generator[str, None, None]:
 
 
 def build_rag_payload(question: str, context: str, history: str = "") -> str:
+    clean_context = re.sub(r"<br\s*/?>", "\n", context, flags=re.I)
+    clean_context = re.sub(r"&nbsp;", " ", clean_context, flags=re.I)
+    clean_context = re.sub(r"scanned\s+(by|with)\s+\w+", "", clean_context, flags=re.I)
+    clean_context = clean_context.replace("\r", "")
+
     return f"""
 {RAG_SYSTEM_PROMPT}
 
@@ -88,17 +93,17 @@ Conversation History:
 {history}
 
 Knowledge Base Documents:
-{context}
+{clean_context}
 
 Student Question:
 {question}
 
 Instructions:
-- Synthesize a direct, natural, beautifully structured Markdown assistant response from the Knowledge Base documents.
-- Start directly with a clear 1-2 sentence explanation paragraph under the main title.
-- Do NOT output disclaimers like 'Based on the verified GCET Knowledge Base documents:' or redundant 'Key Details' headers.
-- Do NOT expose raw chunk prefixes, filename page numbers (e.g. 'Document.pdf (Page X):'), 'Document:', 'Category:', or 'Tags:' inside your answer text. Grounded source cards appear automatically below your response.
-- For timetables, format with an intro line, day-by-day Weekly Schedule breakdown, and a Subject & Faculty Mapping table (`| S.No | SUBJECT (THEORY/PRACTICAL) | COURSE CODE | FACULTY NAME | NO. OF PERIODS |`).
+- Synthesize a direct, natural, conversational response grounded in the provided Knowledge Base documents.
+- Answer ONLY what the student asked. Ignore background noise chunks or unrelated rules (anti-ragging, placement policy, leaving campus) when answering specific questions (such as attendance).
+- Do NOT force generic headings, artificial section titles, or fixed templates (such as 'Key Requirements', 'Overview', 'Details', 'Summary', or 'Schedule Breakdown').
+- Do NOT output disclaimers like 'Based on the verified GCET Knowledge Base documents:' or expose raw chunk prefixes, filename page numbers (e.g. 'Document.pdf (Page X):'), 'Category:', or 'Tags:' inside your answer body. Grounded source cards appear automatically below your response.
+- For timetables, class schedules, or academic calendars, reconstruct the structured data into a clean Markdown table (`| ... |`). Start with a short natural introductory sentence, followed by the table. Do NOT flatten tables into paragraphs.
 - Return ONLY the student-facing answer in Markdown. Do not return JSON.
 """
 
